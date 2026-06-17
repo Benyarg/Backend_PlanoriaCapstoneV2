@@ -495,8 +495,8 @@ public class AiGenerationService : IAiGenerationService
                     var pages = pdf.GetPages().ToList();
                     var text = string.Join("\n", pages.Select(p => p.Text));
 
-                    if (text.Length > 8000)
-                        text = text.Substring(0, 8000) + "...";
+                    if (text.Length > 30000)
+                        text = text.Substring(0, 30000) + "\n\n[Contenido truncado - se procesaron las primeras páginas]";
 
                     return string.IsNullOrWhiteSpace(text)
                         ? $"Archivo PDF: {file.OriginalFilename}. Genera contenido sobre este tema."
@@ -505,8 +505,8 @@ public class AiGenerationService : IAiGenerationService
                 else if (extension == ".txt")
                 {
                     var text = await File.ReadAllTextAsync(file.FilePath);
-                    if (text.Length > 8000)
-                        text = text.Substring(0, 8000) + "...";
+                    if (text.Length > 30000)
+                        text = text.Substring(0, 30000) + "\n\n[Contenido truncado]";
                     return text;
                 }
             }

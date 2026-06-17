@@ -18,6 +18,13 @@ public class FlashcardRepository : IFlashcardRepository
             .Include(f => f.Deck)
             .FirstOrDefaultAsync(f => f.Id == id);
     }
+    public async Task<IEnumerable<FlashcardDeck>> GetByUserIdAsync(int userId)
+    {
+        return await _context.FlashcardDecks
+            .Include(d => d.Course)
+            .Where(d => d.Course != null && d.Course.UserId == userId)
+            .ToListAsync();
+    }
 
     public async Task<IEnumerable<Flashcard>> GetByDeckIdAsync(int deckId)
     {

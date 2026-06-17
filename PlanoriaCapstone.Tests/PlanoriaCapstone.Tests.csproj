@@ -10,6 +10,7 @@
 
 	<ItemGroup>
 		<PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="8.0.0" />
+		<PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="8.0.0" />
 		<PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
 		<PackageReference Include="MSTest.TestAdapter" Version="3.6.2" />
 		<PackageReference Include="MSTest.TestFramework" Version="3.6.2" />
@@ -17,14 +18,6 @@
 
 	<ItemGroup>
 		<ProjectReference Include="..\Backend_PlanoriaCapstone\Backend_PlanoriaCapstone.csproj" />
-	</ItemGroup>
-
-	<ItemGroup>
-	  <Folder Include="AuthTests\" />
-	  <Folder Include="FlashcardTests\" />
-	  <Folder Include="IntegrationsTests\" />
-	  <Folder Include="ProgresoTests\" />
-	  <Folder Include="QuizTests\" />
 	</ItemGroup>
 
 </Project>

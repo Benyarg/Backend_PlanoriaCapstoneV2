@@ -27,6 +27,15 @@ namespace Backend_PlanoriaCapstone.Controllers
             var result = await _flashcardService.GetByDeckIdAsync(deckId.Value);
             return Ok(result);
         }
+        [HttpGet("all")]
+        public async Task<IActionResult> GetAll()
+        {
+            var userId = User.ObtenerUserId();
+            if (userId == null) return Unauthorized();
+
+            var result = await _flashcardService.GetAllByUserAsync(userId.Value);
+            return Ok(result);
+        }
 
         [HttpGet("{id}")]
         public async Task<IActionResult> GetById(int id)

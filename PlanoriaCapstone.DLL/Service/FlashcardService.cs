@@ -30,6 +30,19 @@ public class FlashcardService : IFlashcardService
 
         return MapToDto(card);
     }
+    public async Task<IEnumerable<FlashcardResponseDto>> GetAllByUserAsync(int userId)
+    {
+        var decks = await _deckRepo.GetByUserIdAsync(userId);
+        var allCards = new List<FlashcardResponseDto>();
+
+        foreach (var deck in decks)
+        {
+            var cards = await _flashcardRepo.GetByDeckIdAsync(deck.Id);
+            allCards.AddRange(cards.Select(MapToDto));
+        }
+
+        return allCards;
+    }
 
     public async Task<IEnumerable<FlashcardResponseDto>> GetByDeckIdAsync(int deckId)
     {

@@ -20,8 +20,6 @@ builder.Services.AddDbContext<AppDbContext>(options =>
         builder.Configuration.GetConnectionString("DefaultConnection")));
 
 // SERVICES
-
-
 builder.Services.AddHttpClient();
 
 // REPOSITORIES
@@ -65,103 +63,75 @@ builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddScoped<ISystemService, SystemService>();
 builder.Services.AddScoped<IReportService, ReportService>();
 
-// 80b1d727e3a30f8d8a54dd1c3b6744a7b30d6864
-
 // CONTROLLERS
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
     {
         options.JsonSerializerOptions.ReferenceHandler =
             ReferenceHandler.IgnoreCycles;
-
         options.JsonSerializerOptions.DefaultIgnoreCondition =
             JsonIgnoreCondition.WhenWritingNull;
     });
 
 // SWAGGER
 builder.Services.AddEndpointsApiExplorer();
-
 builder.Services.AddSwaggerGen(c =>
 {
-    c.SwaggerDoc("v1", new()
+    c.SwaggerDoc("v1", new() { Title = "Planoria API", Version = "v1" });
+    c.AddSecurityDefinition("Bearer", new Microsoft.OpenApi.Models.OpenApiSecurityScheme
     {
-        Title = "Planoria API",
-        Version = "v1"
+        Name = "Authorization",
+        Type = Microsoft.OpenApi.Models.SecuritySchemeType.Http,
+        Scheme = "bearer",
+        BearerFormat = "JWT",
+        In = Microsoft.OpenApi.Models.ParameterLocation.Header,
+        Description = "Bearer TOKEN"
     });
-
-    c.AddSecurityDefinition("Bearer",
-        new Microsoft.OpenApi.Models.OpenApiSecurityScheme
+    c.AddSecurityRequirement(new Microsoft.OpenApi.Models.OpenApiSecurityRequirement
+    {
+        { new Microsoft.OpenApi.Models.OpenApiSecurityScheme
         {
-            Name = "Authorization",
-            Type = Microsoft.OpenApi.Models.SecuritySchemeType.Http,
-            Scheme = "bearer",
-            BearerFormat = "JWT",
-            In = Microsoft.OpenApi.Models.ParameterLocation.Header,
-            Description = "Bearer TOKEN"
-        });
-
-    c.AddSecurityRequirement(
-        new Microsoft.OpenApi.Models.OpenApiSecurityRequirement
-        {
+            Reference = new Microsoft.OpenApi.Models.OpenApiReference
             {
-                new Microsoft.OpenApi.Models.OpenApiSecurityScheme
-                {
-                    Reference =
-                        new Microsoft.OpenApi.Models.OpenApiReference
-                        {
-                            Type =
-                                Microsoft.OpenApi.Models.ReferenceType
-                                    .SecurityScheme,
-                            Id = "Bearer"
-                        }
-                },
-                Array.Empty<string>()
+                Type = Microsoft.OpenApi.Models.ReferenceType.SecurityScheme,
+                Id = "Bearer"
             }
-        });
+        }, Array.Empty<string>() }
+    });
 });
 
 // JWT
-builder.Services.AddAuthentication(
-        JwtBearerDefaults.AuthenticationScheme)
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
-        options.TokenValidationParameters =
-            new TokenValidationParameters
-            {
-                ValidateIssuer = true,
-                ValidateAudience = true,
-                ValidateLifetime = true,
-                ValidateIssuerSigningKey = true,
-
-                ValidIssuer =
-                    builder.Configuration["Jwt:Issuer"],
-
-                ValidAudience =
-                    builder.Configuration["Jwt:Audience"],
-
-                IssuerSigningKey =
-                    new SymmetricSecurityKey(
-                        Encoding.UTF8.GetBytes(
-                            builder.Configuration["Jwt:Key"]!))
-            };
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            ValidIssuer = builder.Configuration["Jwt:Issuer"],
+            ValidAudience = builder.Configuration["Jwt:Audience"],
+            IssuerSigningKey = new SymmetricSecurityKey(
+                Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]!))
+        };
     });
 
 builder.Services.AddAuthorization();
 
-// CORS
+// ✅ CORS CORREGIDO
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowAll", policy =>
-        policy.AllowAnyOrigin()
+        policy.WithOrigins("http://localhost:5173", "http://localhost:3000", "http://localhost:7075")
               .AllowAnyMethod()
-              .AllowAnyHeader());
+              .AllowAnyHeader()
+              .AllowCredentials());
 });
 
 var app = builder.Build();
 
-// =====================================
-
-// AUTO-MIGRATE (with retry for SQL Server startup)
+// AUTO-MIGRATE
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -180,52 +150,20 @@ using (var scope = app.Services.CreateScope())
     }
 }
 
-// 80b1d727e3a30f8d8a54dd1c3b6744a7b30d6864
-// SWAGGER
-// =====================================
-
 app.UseSwagger();
-
-app.UseSwaggerUI(c =>
-{
-    c.SwaggerEndpoint(
-        "/swagger/v1/swagger.json",
-        "Planoria API v1");
-});
-
-// =====================================
-// HTTPS SOLO EN LOCAL
-// =====================================
+app.UseSwaggerUI(c => { c.SwaggerEndpoint("/swagger/v1/swagger.json", "Planoria API v1"); });
 
 if (app.Environment.IsDevelopment())
 {
     app.UseHttpsRedirection();
 }
 
-// =====================================
-// STATIC FILES
-// =====================================
-
 app.UseStaticFiles();
 
-// =====================================
-// CORS
-// =====================================
-
+// ✅ CORS antes de Auth
 app.UseCors("AllowAll");
 
-// =====================================
-// AUTH
-// =====================================
-
 app.UseAuthentication();
-
 app.UseAuthorization();
-
-// =====================================
-// CONTROLLERS
-// =====================================
-
 app.MapControllers();
-
 app.Run();
