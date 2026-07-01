@@ -24,7 +24,7 @@ cp .env.example .env
 Desde la raíz del proyecto:
 
 ```bash
-docker-compose up -d --build
+docker compose up -d --build
 ```
 
 Esto levanta dos contenedores:
@@ -58,14 +58,17 @@ docker logs planoria-backend -f --tail 20
 # Reiniciar solo backend (ej: después de cambiar API key)
 docker-compose restart backend
 
-# Reconstruir imagen (ej: después de cambios en código)
-docker-compose up -d --build
+# Reconstruir todo (backend + bdd)
+docker compose up -d --build
+
+# Reconstruir SOLO el backend (sin tocar la bdd)
+docker compose up -d --build backend
 
 # Detener contenedores (los datos persisten)
-docker-compose down
+docker compose down
 
 # Detener y borrar datos
-docker-compose down -v
+docker compose down -v
 ```
 
 ## Notas

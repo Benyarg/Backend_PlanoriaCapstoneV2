@@ -22,24 +22,24 @@ public class QuizService : IQuizService
         _activityLogRepository = activityLogRepository;
     }
 
-    public async Task<QuizResponseDto> GetByIdAsync(int id)
+    public async Task<QuizResponseDto> GetByIdAsync(int id, int userId)
     {
-        var quiz = await _quizRepository.GetByIdAsync(id);
+        var quiz = await _quizRepository.GetByIdAsync(id, userId);
         if (quiz == null)
             throw new KeyNotFoundException($"Quiz con ID {id} no encontrado");
 
         return MapToResponse(quiz);
     }
 
-    public async Task<IEnumerable<QuizListResponseDto>> GetByCourseIdAsync(int courseId)
+    public async Task<IEnumerable<QuizListResponseDto>> GetByCourseIdAsync(int courseId, int userId)
     {
-        var quizzes = await _quizRepository.GetByCourseIdAsync(courseId);
+        var quizzes = await _quizRepository.GetByCourseIdAsync(courseId, userId);
         return quizzes.Select(MapToListResponse);
     }
 
-    public async Task<IEnumerable<QuizListResponseDto>> GetAllAsync()
+    public async Task<IEnumerable<QuizListResponseDto>> GetAllAsync(int userId)
     {
-        var quizzes = await _quizRepository.GetAllAsync();
+        var quizzes = await _quizRepository.GetAllAsync(userId);
         return quizzes.Select(MapToListResponse);
     }
 
@@ -156,7 +156,7 @@ public class QuizService : IQuizService
         if (quiz == null)
             throw new KeyNotFoundException($"Quiz con ID {quizId} no encontrado");
 
-        // Crear pregunta directamente
+        // Crear pregunta
         var question = new QuizQuestion
         {
             QuizId = quizId,
@@ -185,11 +185,7 @@ public class QuizService : IQuizService
             }).ToList();
         }
 
-        // Actualizar total de preguntas
-        var updatedQuiz = await _quizRepository.GetByIdAsync(quizId);
-        updatedQuiz!.TotalQuestions = (updatedQuiz.QuizQuestions?.Count ?? 0);
-        updatedQuiz.UpdatedAt = DateTime.UtcNow;
-        await _quizRepository.UpdateAsync(updatedQuiz);
+        await _quizRepository.UpdateTotalQuestionsAsync(quizId);
 
         return MapToQuestionResponse(question);
     }
@@ -201,6 +197,7 @@ public class QuizService : IQuizService
         if (question == null)
             throw new KeyNotFoundException($"Pregunta con ID {questionId} no encontrada");
 
+        // Actualizar propiedades simples
         if (request.QuestionText != null) question.QuestionText = request.QuestionText;
         if (request.Explanation != null) question.Explanation = request.Explanation;
         if (request.Points.HasValue) question.Points = request.Points.Value;
@@ -208,16 +205,56 @@ public class QuizService : IQuizService
         //if (request.IsActive.HasValue) question.IsActive = request.IsActive.Value;
         question.UpdatedAt = DateTime.UtcNow;
 
+        // ✅ ACTUALIZAR OPCIONES CORRECTAMENTE
         if (request.Options != null)
         {
-            question.QuizOptions = request.Options.Select(o => new QuizOption
+            // Obtener opciones existentes
+            var existingOptions = question.QuizOptions?.ToList() ?? new List<QuizOption>();
+
+            // Crear lista de IDs de opciones que vienen en la request (con ID > 0)
+            var updatedOptionIds = request.Options
+                .Where(o => o.Id.HasValue && o.Id.Value > 0)
+                .Select(o => o.Id.Value)
+                .ToList();
+
+            // Eliminar opciones que ya no están en la request
+            var optionsToRemove = existingOptions
+                .Where(o => !updatedOptionIds.Contains(o.Id))
+                .ToList();
+
+            foreach (var option in optionsToRemove)
             {
-                QuestionId = questionId,
-                OptionText = o.OptionText,
-                IsCorrect = o.IsCorrect ?? false,
-                OrderPosition = o.OrderPosition ?? 0,
-                CreatedAt = DateTime.UtcNow
-            }).ToList();
+                question.QuizOptions.Remove(option);
+            }
+
+            // Actualizar opciones existentes o agregar nuevas
+            foreach (var optionDto in request.Options)
+            {
+                if (optionDto.Id.HasValue && optionDto.Id.Value > 0)
+                {
+                    // Actualizar opción existente
+                    var existingOption = existingOptions.FirstOrDefault(o => o.Id == optionDto.Id.Value);
+                    if (existingOption != null)
+                    {
+                        if (optionDto.OptionText != null) existingOption.OptionText = optionDto.OptionText;
+                        if (optionDto.IsCorrect.HasValue) existingOption.IsCorrect = optionDto.IsCorrect.Value;
+                        if (optionDto.OrderPosition.HasValue) existingOption.OrderPosition = optionDto.OrderPosition.Value;
+                    }
+                }
+                else
+                {
+                    // Agregar nueva opción
+                    var newOption = new QuizOption
+                    {
+                        QuestionId = questionId,
+                        OptionText = optionDto.OptionText ?? string.Empty,
+                        IsCorrect = optionDto.IsCorrect ?? false,
+                        OrderPosition = optionDto.OrderPosition ?? 0,
+                        CreatedAt = DateTime.UtcNow
+                    };
+                    question.QuizOptions.Add(newOption);
+                }
+            }
         }
 
         quiz.UpdatedAt = DateTime.UtcNow;
@@ -235,7 +272,6 @@ public class QuizService : IQuizService
         if (question == null) return false;
 
         quiz.QuizQuestions.Remove(question);
-        quiz.TotalQuestions = quiz.QuizQuestions.Count;
         quiz.UpdatedAt = DateTime.UtcNow;
 
         await _quizRepository.UpdateAsync(quiz);

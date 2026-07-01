@@ -1,3 +1,4 @@
+//Revisado
 using Backend_PlanoriaCapstone.Extensions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -18,6 +19,7 @@ namespace Backend_PlanoriaCapstone.Controllers
             _aiService = aiService;
         }
 
+        //GENERACIÓN DE CONTENIDO
         [HttpPost("generate/flashcards")]
         public async Task<IActionResult> GenerateFlashcards([FromBody] GenerateContentRequestDto request)
         {
@@ -42,31 +44,13 @@ namespace Backend_PlanoriaCapstone.Controllers
 
         [HttpGet("generate/{id}/status")]
         public async Task<IActionResult> GetGenerationStatus(int id)
+
         {
             var result = await _aiService.GetGenerationStatusAsync(id);
             return Ok(result);
         }
 
-        [HttpPut("config")]
-        public async Task<IActionResult> SetConfig([FromBody] AIConfigRequestDto request)
-        {
-            await _aiService.SetConfigAsync(request);
-            return Ok(new { message = "Configuración guardada" });
-        }
-
-        [HttpGet("config")]
-        public async Task<IActionResult> GetConfig()
-        {
-            var config = await _aiService.GetConfigAsync();
-            return Ok(config);
-        }
-
-        [HttpPost("config/test")]
-        public async Task<IActionResult> TestConnection()
-        {
-            await _aiService.TestConnectionAsync();
-            return Ok(new { message = "Conexión exitosa" });
-        }
+        //MEJORA Y REGENERACIÓN
 
         [HttpPost("regenerate")]
         public async Task<IActionResult> Regenerate([FromBody] ImproveContentRequestDto request)
@@ -89,6 +73,7 @@ namespace Backend_PlanoriaCapstone.Controllers
             return Ok(result);
         }
 
+        //HISTORIAL
         [HttpGet("history")]
         public async Task<IActionResult> GetHistory([FromQuery] int? fileId)
         {
@@ -116,6 +101,28 @@ namespace Backend_PlanoriaCapstone.Controllers
             if (!deleted)
                 return NotFound();
             return NoContent();
+        }
+
+        //CONFIGURACIÓN 
+        [HttpPut("config")]
+        public async Task<IActionResult> SetConfig([FromBody] AIConfigRequestDto request)
+        {
+            await _aiService.SetConfigAsync(request);
+            return Ok(new { message = "Configuración guardada" });
+        }
+
+        [HttpGet("config")]
+        public async Task<IActionResult> GetConfig()
+        {
+            var config = await _aiService.GetConfigAsync();
+            return Ok(config);
+        }
+
+        [HttpPost("config/test")]
+        public async Task<IActionResult> TestConnection()
+        {
+            await _aiService.TestConnectionAsync();
+            return Ok(new { message = "Conexión exitosa" });
         }
     }
 }

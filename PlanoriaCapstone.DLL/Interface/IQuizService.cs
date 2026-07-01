@@ -5,9 +5,9 @@ namespace PlanoriaCapstone.Bll.Interface;
 
 public interface IQuizService
 {
-    Task<QuizResponseDto> GetByIdAsync(int id);
-    Task<IEnumerable<QuizListResponseDto>> GetByCourseIdAsync(int courseId);
-    Task<IEnumerable<QuizListResponseDto>> GetAllAsync();
+    Task<QuizResponseDto> GetByIdAsync(int id, int userId);
+    Task<IEnumerable<QuizListResponseDto>> GetByCourseIdAsync(int courseId, int userId);
+    Task<IEnumerable<QuizListResponseDto>> GetAllAsync(int userId);
     Task<QuizResponseDto> CreateAsync(int userId, CreateQuizRequestDto request);
     Task<QuizResponseDto> UpdateAsync(int id, UpdateQuizRequestDto request);
     Task<bool> DeleteAsync(int id);

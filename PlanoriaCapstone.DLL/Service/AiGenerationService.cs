@@ -340,19 +340,18 @@ public class AiGenerationService : IAiGenerationService
 
     public async Task<bool> DeleteHistoryAsync(int id)
     {
-        _generatedIndex.TryRemove(id, out _);
-        if (_generatedIndex.TryGetValue(id, out var entry))
+        if (!_generatedIndex.TryRemove(id, out var entry))
+            return false;
+
+        var file = await _fileUploadRepository.GetByIdAsync(entry.FileUploadId);
+        if (file?.GeneratedContents != null)
         {
-            var file = await _fileUploadRepository.GetByIdAsync(entry.FileUploadId);
-            if (file?.GeneratedContents != null)
+            var toRemove = file.GeneratedContents.FirstOrDefault(g => g.Id == id);
+            if (toRemove != null)
             {
-                var toRemove = file.GeneratedContents.FirstOrDefault(g => g.Id == id);
-                if (toRemove != null)
-                {
-                    file.GeneratedContents.Remove(toRemove);
-                    await _fileUploadRepository.UpdateAsync(file);
-                    return true;
-                }
+                file.GeneratedContents.Remove(toRemove);
+                await _fileUploadRepository.UpdateAsync(file);
+                return true;
             }
         }
         return false;

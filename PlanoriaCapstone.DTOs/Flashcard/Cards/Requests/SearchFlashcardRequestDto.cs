@@ -1,18 +1,22 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using System.ComponentModel.DataAnnotations;
 
 namespace PlanoriaCapstone.DTOs.Flashcards.Cards.Requests
 {
     public class SearchFlashcardRequestDto
     {
-        public string Query { get; set; }
+        [StringLength(200, ErrorMessage = "La consulta no puede exceder 200 caracteres")]
+        public string? Query { get; set; } // Hacemos que sea anulable (string?)
+
         public int? DeckId { get; set; }
-        public List<string> Tags { get; set; }
-        public string Difficulty { get; set; }
+
+        public List<string>? Tags { get; set; } // Lista anulable
+
+        [StringLength(10, ErrorMessage = "La dificultad no puede exceder 10 caracteres")]
+        public string? Difficulty { get; set; }
+
         public bool? IsActive { get; set; }
-        public int Limit { get; set; } = 50;
+
+        [Range(1, 200, ErrorMessage = "El límite debe estar entre 1 y 200")]
+        public int Limit { get; set; } = 50; // Este es el único que siempre tendrá valor
     }
 }

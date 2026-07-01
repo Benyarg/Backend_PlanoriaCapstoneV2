@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.AspNetCore.Hosting;
 using PlanoriaCapstone.Bll.Interface;
 using PlanoriaCapstone.Dal;
 using PlanoriaCapstone.DTOs.Users.Requests;
@@ -11,11 +12,13 @@ public class UserService : IUserService
 {
     private readonly IUserRepository _userRepository;
     private readonly IActivityLogRepository _activityLogRepository;
+    private readonly IWebHostEnvironment _environment;
 
-    public UserService(IUserRepository userRepository, IActivityLogRepository activityLogRepository)
+    public UserService(IUserRepository userRepository, IActivityLogRepository activityLogRepository, IWebHostEnvironment environment)
     {
         _userRepository = userRepository;
         _activityLogRepository = activityLogRepository;
+        _environment = environment;
     }
 
     public async Task<UserResponseDto> GetProfileAsync(int userId)
@@ -58,6 +61,26 @@ public class UserService : IUserService
 
     public async Task UploadAvatarAsync(int userId, Stream avatarStream, string fileName)
     {
+        var user = await _userRepository.GetByIdAsync(userId);
+        if (user == null)
+            throw new InvalidOperationException("Usuario no encontrado");
+
+        var avatarsDir = Path.Combine(_environment.WebRootPath, "avatars");
+        Directory.CreateDirectory(avatarsDir);
+
+        var ext = Path.GetExtension(fileName);
+        var uniqueFileName = $"{Guid.NewGuid():N}{ext}";
+        var filePath = Path.Combine(avatarsDir, uniqueFileName);
+
+        using (var fs = new FileStream(filePath, FileMode.Create))
+        {
+            await avatarStream.CopyToAsync(fs);
+        }
+
+        user.Avatar = Path.Combine("avatars", uniqueFileName);
+        user.UpdatedAt = DateTime.UtcNow;
+        await _userRepository.UpdateAsync(user);
+
         await _activityLogRepository.LogAsync(new ActivityLog
         {
             UserId = userId,
@@ -67,12 +90,27 @@ public class UserService : IUserService
             Details = $"Avatar subido: {fileName}",
             CreatedAt = DateTime.UtcNow
         });
-
-        await Task.CompletedTask;
     }
 
     public async Task DeleteAvatarAsync(int userId)
     {
+        var user = await _userRepository.GetByIdAsync(userId);
+        if (user == null)
+            throw new InvalidOperationException("Usuario no encontrado");
+
+        if (!string.IsNullOrEmpty(user.Avatar))
+        {
+            var fullPath = Path.Combine(_environment.WebRootPath, user.Avatar);
+            if (File.Exists(fullPath))
+            {
+                File.Delete(fullPath);
+            }
+        }
+
+        user.Avatar = null;
+        user.UpdatedAt = DateTime.UtcNow;
+        await _userRepository.UpdateAsync(user);
+
         await _activityLogRepository.LogAsync(new ActivityLog
         {
             UserId = userId,
@@ -82,8 +120,6 @@ public class UserService : IUserService
             Details = "Avatar eliminado",
             CreatedAt = DateTime.UtcNow
         });
-
-        await Task.CompletedTask;
     }
 
     public async Task<UserPreferencesResponseDto> GetPreferencesAsync(int userId)
@@ -298,7 +334,7 @@ public class UserService : IUserService
             Id = user.Id,
             FullName = user.FullName,
             Email = user.Email,
-            Avatar = string.Empty,
+            Avatar = user.Avatar ?? string.Empty,
             Timezone = user.Timezone,
             PreferredLanguage = user.PreferredLanguage,
             Theme = user.Theme,

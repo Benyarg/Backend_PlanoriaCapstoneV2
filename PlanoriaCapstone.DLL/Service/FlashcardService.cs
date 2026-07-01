@@ -22,6 +22,23 @@ public class FlashcardService : IFlashcardService
         _logRepo = logRepo;
     }
 
+    public async Task<int> GetOwnerUserIdAsync(int flashcardId)
+    {
+        var card = await _flashcardRepo.GetByIdAsync(flashcardId);
+        if (card == null)
+            throw new KeyNotFoundException($"Flashcard {flashcardId} no encontrada");
+        var deck = await _deckRepo.GetByIdAsync(card.DeckId);
+        return deck?.Course?.UserId ?? throw new KeyNotFoundException($"No se pudo determinar el propietario de la flashcard {flashcardId}");
+    }
+
+    public async Task<int> GetDeckOwnerUserIdAsync(int deckId)
+    {
+        var deck = await _deckRepo.GetByIdAsync(deckId);
+        if (deck == null)
+            throw new KeyNotFoundException($"Deck {deckId} no encontrado");
+        return deck?.Course?.UserId ?? throw new KeyNotFoundException($"No se pudo determinar el propietario del deck {deckId}");
+    }
+
     public async Task<FlashcardResponseDto> GetByIdAsync(int id)
     {
         var card = await _flashcardRepo.GetByIdAsync(id);

@@ -5,6 +5,8 @@ namespace PlanoriaCapstone.Bll.Interface;
 
 public interface IFlashcardService
 {
+    Task<int> GetOwnerUserIdAsync(int flashcardId);
+    Task<int> GetDeckOwnerUserIdAsync(int deckId);
     Task<FlashcardResponseDto> GetByIdAsync(int id);
     Task<IEnumerable<FlashcardResponseDto>> GetAllByUserAsync(int userId);
     Task<IEnumerable<FlashcardResponseDto>> GetByDeckIdAsync(int deckId);

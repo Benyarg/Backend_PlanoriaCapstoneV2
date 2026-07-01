@@ -1,3 +1,6 @@
+
+//NOTE: Falta verificar los endpoints
+
 using Backend_PlanoriaCapstone.Extensions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -18,6 +21,7 @@ namespace Backend_PlanoriaCapstone.Controllers
             _attemptService = attemptService;
         }
 
+        //INICIAR Y ENVIAR INTENTO
         [HttpPost("start")]
         public async Task<IActionResult> Start([FromBody] StartQuizAttemptRequestDto request)
         {
@@ -41,24 +45,8 @@ namespace Backend_PlanoriaCapstone.Controllers
             return Ok(result);
         }
 
-        [HttpGet("{id}/result")]
-        public async Task<IActionResult> GetResult(int id)
-        {
-            var result = await _attemptService.GetResultAsync(id);
-            return Ok(result);
-        }
 
-        [HttpGet]
-        public async Task<IActionResult> GetAttempts([FromQuery] int? quizId)
-        {
-            var userId = User.ObtenerUserId();
-            if (userId == null)
-                return Unauthorized();
-
-            var attempts = await _attemptService.GetAttemptsAsync(userId.Value, quizId);
-            return Ok(attempts);
-        }
-
+        //• RESPUESTAS.
         [HttpPost("answer")]
         public async Task<IActionResult> SaveAnswer([FromBody] SubmitAnswerRequestDto request)
         {
@@ -92,6 +80,7 @@ namespace Backend_PlanoriaCapstone.Controllers
             return Ok();
         }
 
+        //CALIFICACIÓN
         [HttpPost("{id}/grade")]
         public async Task<IActionResult> AutoGrade(int id)
         {
@@ -104,6 +93,26 @@ namespace Backend_PlanoriaCapstone.Controllers
         {
             await _attemptService.RegradeAsync(id);
             return Ok();
+        }
+
+
+        //CONSULTAR INTENTOS
+        [HttpGet]
+        public async Task<IActionResult> GetAttempts([FromQuery] int? quizId)
+        {
+            var userId = User.ObtenerUserId();
+            if (userId == null)
+                return Unauthorized();
+
+            var attempts = await _attemptService.GetAttemptsAsync(userId.Value, quizId);
+            return Ok(attempts);
+        }
+
+        [HttpGet("{id}/result")]
+        public async Task<IActionResult> GetResult(int id)
+        {
+            var result = await _attemptService.GetResultAsync(id);
+            return Ok(result);
         }
 
         [HttpGet("history")]

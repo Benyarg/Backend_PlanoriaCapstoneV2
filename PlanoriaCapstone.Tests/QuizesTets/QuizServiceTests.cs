@@ -15,6 +15,7 @@ namespace PlanoriaCapstone.Tests.Services
         private ICourseRepository _courseRepo = null!;
         private IActivityLogRepository _logRepo = null!;
         private QuizService _quizService = null!;
+        private const int TestUserId = 1;
 
         [TestInitialize]
         public void Setup()
@@ -33,7 +34,7 @@ namespace PlanoriaCapstone.Tests.Services
             {
                 Id = 1,
                 Name = "Test Course",
-                UserId = 1,
+                UserId = TestUserId,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
             });
@@ -54,7 +55,7 @@ namespace PlanoriaCapstone.Tests.Services
                 AttemptsAllowed = 3
             };
 
-            var result = await _quizService.CreateAsync(1, request);
+            var result = await _quizService.CreateAsync(TestUserId, request);
 
             Assert.IsNotNull(result);
             Assert.AreEqual("Test Quiz", result.Title);
@@ -66,14 +67,15 @@ namespace PlanoriaCapstone.Tests.Services
         [TestMethod]
         public async Task GetByIdAsync_ExistingQuiz_ReturnsQuiz()
         {
-            var created = await _quizService.CreateAsync(1, new CreateQuizRequestDto
+            var created = await _quizService.CreateAsync(TestUserId, new CreateQuizRequestDto
             {
                 Title = "Get Test",
                 CourseId = 1,
                 PassingScore = 80
             });
 
-            var result = await _quizService.GetByIdAsync(created.Id);
+            // ✅ Agregar userId
+            var result = await _quizService.GetByIdAsync(created.Id, TestUserId);
 
             Assert.IsNotNull(result);
             Assert.AreEqual("Get Test", result.Title);
@@ -82,14 +84,15 @@ namespace PlanoriaCapstone.Tests.Services
         [TestMethod]
         public async Task GetByIdAsync_NonExistent_ThrowsKeyNotFoundException()
         {
+            // ✅ Agregar userId
             await Assert.ThrowsExceptionAsync<KeyNotFoundException>(
-                () => _quizService.GetByIdAsync(999));
+                () => _quizService.GetByIdAsync(999, TestUserId));
         }
 
         [TestMethod]
         public async Task DeleteAsync_ExistingQuiz_ReturnsTrue()
         {
-            var created = await _quizService.CreateAsync(1, new CreateQuizRequestDto
+            var created = await _quizService.CreateAsync(TestUserId, new CreateQuizRequestDto
             {
                 Title = "Delete Test",
                 CourseId = 1
@@ -103,7 +106,7 @@ namespace PlanoriaCapstone.Tests.Services
         [TestMethod]
         public async Task CreateQuestionAsync_ValidQuestion_AddsToQuiz()
         {
-            var quiz = await _quizService.CreateAsync(1, new CreateQuizRequestDto
+            var quiz = await _quizService.CreateAsync(TestUserId, new CreateQuizRequestDto
             {
                 Title = "Questions Quiz",
                 CourseId = 1

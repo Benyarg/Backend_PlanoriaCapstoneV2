@@ -110,9 +110,9 @@ public class FlashcardProgressService : IFlashcardProgressService
         {
             EstimatedMasteryDate = DateTime.UtcNow.AddDays(14),
             ProjectedMasteryPercentage = progress?.CardsMastered > 0
-                ? Math.Min(100, progress.CardsMastered * 100 / Math.Max(1, totalCards))
+                ? Math.Min(100, (decimal)progress.CardsMastered * 100 / Math.Max(1, totalCards))
                 : 0,
-            CardsToReviewPerDay = Math.Max(1, totalCards - (progress?.CardsMastered ?? 0)) / 14,
+            CardsToReviewPerDay = Math.Max(1, (totalCards - (progress?.CardsMastered ?? 0)) / 14),
             ConfidenceLevel = progress?.AverageEaseFactor ?? 2.50m
         };
     }
@@ -173,7 +173,7 @@ public class FlashcardProgressService : IFlashcardProgressService
     {
         int mastered = progress?.CardsMastered ?? 0;
         int learning = progress?.CardsInLearning ?? 0;
-        int studied = progress?.TotalReviews ?? 0;
+        int studied = mastered + learning;
         int notStarted = Math.Max(0, totalCards - studied);
 
         return new FlashcardProgressResponseDto

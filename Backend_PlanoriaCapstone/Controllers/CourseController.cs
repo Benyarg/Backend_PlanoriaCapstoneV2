@@ -1,10 +1,9 @@
-
+//Revisado
 using Backend_PlanoriaCapstone.Extensions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using PlanoriaCapstone.Bll.Interface;
 using PlanoriaCapstone.DTOs.Courses.Requests;
-using PlanoriaCapstone.DTOs.Courses.Responses;
 
 namespace Backend_PlanoriaCapstone.Controllers
 {
@@ -20,6 +19,7 @@ namespace Backend_PlanoriaCapstone.Controllers
             _courseService = courseService;
         }
 
+        // Obtiene la lista de cursos del usuario
         [HttpGet]
         public async Task<IActionResult> Index()
         {
@@ -30,6 +30,7 @@ namespace Backend_PlanoriaCapstone.Controllers
             return Ok(courses);
         }
 
+        // Busca el curso y cuánto ha avanzado el usuario en ese curso.
         [HttpGet("{id}")]
         public async Task<IActionResult> Show(int id)
         {
@@ -81,6 +82,29 @@ namespace Backend_PlanoriaCapstone.Controllers
             return NoContent();
         }
 
+        [HttpGet("search")]
+        public async Task<IActionResult> Search([FromQuery] CourseSearchRequestDto request)
+        {
+            var userId = User.ObtenerUserId();
+            if (userId == null) return Unauthorized();
+
+            var courses = await _courseService.SearchAsync(userId.Value, request);
+            return Ok(courses);
+        }
+
+        [HttpGet("{id}/stats")]
+        public async Task<IActionResult> GetStats(int id)
+        {
+            var userId = User.ObtenerUserId();
+            if (userId == null) return Unauthorized();
+
+            var stats = await _courseService.GetStatsAsync(id, userId.Value);
+            return Ok(stats);
+        }
+
+
+        //GESTION DE FECHAS DE EXAMENES
+
         [HttpGet("{id}/exam")]
         public async Task<IActionResult> GetExamDate(int id)
         {
@@ -104,6 +128,7 @@ namespace Backend_PlanoriaCapstone.Controllers
             return NoContent();
         }
 
+        //CURSOS COMPARTIDOS
         [HttpGet("{id}/members")]
         public async Task<IActionResult> GetMembers(int id)
         {
@@ -135,24 +160,5 @@ namespace Backend_PlanoriaCapstone.Controllers
             return NoContent();
         }
 
-        [HttpGet("{id}/stats")]
-        public async Task<IActionResult> GetStats(int id)
-        {
-            var userId = User.ObtenerUserId();
-            if (userId == null) return Unauthorized();
-
-            var stats = await _courseService.GetStatsAsync(id, userId.Value);
-            return Ok(stats);
-        }
-
-        [HttpGet("search")]
-        public async Task<IActionResult> Search([FromQuery] CourseSearchRequestDto request)
-        {
-            var userId = User.ObtenerUserId();
-            if (userId == null) return Unauthorized();
-
-            var courses = await _courseService.SearchAsync(userId.Value, request);
-            return Ok(courses);
-        }
     }
 }

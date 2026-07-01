@@ -188,6 +188,9 @@ public class FlashcardStudyService : IFlashcardStudyService
 
         progress.TotalReviews++;
         progress.AverageEaseFactor = CalculateAverageEaseFactor(userId, session.DeckId);
+        var mastery = CalculateDeckMastery(userId, session.DeckId);
+        progress.CardsMastered = mastery.Mastered;
+        progress.CardsInLearning = mastery.Learning;
         progress.LastStudiedAt = DateTime.UtcNow;
         await _progressRepo.CreateOrUpdateAsync(progress);
     }
@@ -508,6 +511,20 @@ public class FlashcardStudyService : IFlashcardStudyService
             .ToList();
 
         return Math.Round(latestPerCard.Average(r => r.EaseFactor), 2);
+    }
+
+    private (int Mastered, int Learning) CalculateDeckMastery(int userId, int deckId)
+    {
+        var latestReviews = _context.FlashcardReviews
+            .Where(r => r.UserId == userId && r.Flashcard!.DeckId == deckId)
+            .ToList()
+            .GroupBy(r => r.FlashcardId)
+            .Select(g => g.OrderByDescending(r => r.ReviewedAt).First())
+            .ToList();
+
+        var mastered = latestReviews.Count(r => r.KnewIt);
+        var learning = latestReviews.Count(r => !r.KnewIt);
+        return (mastered, learning);
     }
 
     private static FlashcardResponseDto MapToFlashcardDto(Flashcard card)

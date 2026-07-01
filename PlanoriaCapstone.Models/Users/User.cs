@@ -11,6 +11,7 @@ public class User
     public string Timezone { get; set; } = "UTC";
     public bool NotificationEnabled { get; set; } = true;
     public bool EmailNotifications { get; set; } = true;
+    public string? Avatar { get; set; }
     public string DefaultSpacedRepetitionDays { get; set; } = "[1,3,7,14,30]";
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }

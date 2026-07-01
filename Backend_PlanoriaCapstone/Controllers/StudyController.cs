@@ -1,3 +1,5 @@
+//NOTE: Falta verificar los endpoints
+
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using PlanoriaCapstone.Bll.Interface;
@@ -18,6 +20,7 @@ namespace Backend_PlanoriaCapstone.Controllers
             _studyService = studyService;
         }
 
+        //SESIONES DE ESTUDIO
         [HttpPost("sessions")]
         public async Task<IActionResult> StartSession([FromBody] StartStudySessionRequestDto request)
         {
@@ -56,6 +59,8 @@ namespace Backend_PlanoriaCapstone.Controllers
             return Ok(result);
         }
 
+
+        //CONSULTA DE FLASHCARDS
         [HttpGet("decks/{deckId}/due")]
         public async Task<IActionResult> GetDueCards(int deckId)
         {
@@ -76,6 +81,8 @@ namespace Backend_PlanoriaCapstone.Controllers
             return Ok(result);
         }
 
+
+        //REVISIONES Y PROGRAMACIÓN
         [HttpPost("reviews/schedule")]
         public async Task<IActionResult> ScheduleReview([FromBody] ScheduleReviewRequestDto request)
         {
@@ -86,6 +93,7 @@ namespace Backend_PlanoriaCapstone.Controllers
             return Ok(new { message = "Revisión programada" });
         }
 
+        //HISTORIAL Y ESTADISTICAS
         [HttpGet("sessions")]
         public async Task<IActionResult> GetSessionHistory([FromQuery] int? deckId)
         {

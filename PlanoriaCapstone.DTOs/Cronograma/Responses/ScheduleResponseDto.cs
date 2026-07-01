@@ -9,6 +9,7 @@ namespace PlanoriaCapstone.DTOs.Cronograma.Responses
     public class ScheduleResponseDto
     {
         public int Id { get; set; }
+        public int UserId { get; set; }
         public string Title { get; set; }
         public DateTime StartDateTime { get; set; }
         public DateTime EndDateTime { get; set; }

@@ -27,6 +27,9 @@ public class FlashcardDeckService : IFlashcardDeckService
         _logRepo = logRepo;
     }
 
+
+
+    // Gestión de Mazos (Decks) Deck Management (CRUD & Core)
     public async Task<DeckResponseDto> GetByIdAsync(int id)
     {
         var deck = await _deckRepo.GetByIdAsync(id);
@@ -34,6 +37,12 @@ public class FlashcardDeckService : IFlashcardDeckService
             throw new KeyNotFoundException($"Deck {id} no encontrado");
 
         return await MapToDeckDto(deck);
+    }
+
+    public async Task<IEnumerable<DeckListResponseDto>> GetByUserIdAsync(int userId)
+    {
+        var decks = await _deckRepo.GetByUserIdAsync(userId);
+        return decks.Select(MapToListDto);
     }
 
     public async Task<IEnumerable<DeckListResponseDto>> GetByCourseIdAsync(int courseId)
@@ -150,6 +159,25 @@ public class FlashcardDeckService : IFlashcardDeckService
         return await MapToDeckDto(created);
     }
 
+    public async Task<object> GetStatsAsync(int deckId)
+    {
+        var deck = await _deckRepo.GetByIdAsync(deckId);
+        if (deck == null)
+            throw new KeyNotFoundException($"Deck {deckId} no encontrado");
+
+        var cards = await _flashcardRepo.GetByDeckIdAsync(deckId);
+        var totalCards = cards.Count();
+
+        return new
+        {
+            DeckId = deckId,
+            TotalCards = totalCards,
+            CompletionRate = 0m,
+            MasteryLevel = "not_started",
+            StudyHeatmap = new { }
+        };
+    }
+    //Flashcard Management (Cards inside Deck)
     public async Task<IEnumerable<FlashcardResponseDto>> GetCardsAsync(int deckId)
     {
         var cards = await _flashcardRepo.GetByDeckIdAsync(deckId);
@@ -213,25 +241,16 @@ public class FlashcardDeckService : IFlashcardDeckService
         }
     }
 
-    public async Task<object> GetStatsAsync(int deckId)
+    //Helper 
+    public async Task<int> GetOwnerUserIdAsync(int deckId)
     {
         var deck = await _deckRepo.GetByIdAsync(deckId);
         if (deck == null)
             throw new KeyNotFoundException($"Deck {deckId} no encontrado");
-
-        var cards = await _flashcardRepo.GetByDeckIdAsync(deckId);
-        var totalCards = cards.Count();
-
-        return new
-        {
-            DeckId = deckId,
-            TotalCards = totalCards,
-            CompletionRate = 0m,
-            MasteryLevel = "not_started",
-            StudyHeatmap = new { }
-        };
+        return deck.Course?.UserId ?? throw new KeyNotFoundException($"No se pudo determinar el propietario del deck {deckId}");
     }
 
+    //Mappers
     private async Task<DeckResponseDto> MapToDeckDto(FlashcardDeck deck)
     {
         var cards = await _flashcardRepo.GetByDeckIdAsync(deck.Id);
@@ -254,7 +273,6 @@ public class FlashcardDeckService : IFlashcardDeckService
             UpdatedAt = deck.UpdatedAt
         };
     }
-
     private static FlashcardResponseDto MapToFlashcardDto(Flashcard card)
     {
         return new FlashcardResponseDto
@@ -272,6 +290,20 @@ public class FlashcardDeckService : IFlashcardDeckService
             NextReviewDate = null,
             RepetitionCount = 0,
             EaseFactor = 2.5m
+        };
+    }
+    private static DeckListResponseDto MapToListDto(FlashcardDeck deck)
+    {
+        return new DeckListResponseDto
+        {
+            Id = deck.Id,
+            Name = deck.Name,
+            CourseName = deck.Course?.Name ?? "",       // ✅ NUEVO
+            ColorHex = deck.Course?.ColorHex ?? "#3498db", // ✅ NUEVO
+            TotalCards = deck.TotalCards,
+            MasteredPercentage = 0,
+            LastStudiedAt = null,
+            DueCardsCount = 0
         };
     }
 }

@@ -1,15 +1,13 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿using System.ComponentModel.DataAnnotations;
 
-namespace PlanoriaCapstone.DTOs.Courses.Requests
+public class SetExamDateRequestDto
 {
-    public class SetExamDateRequestDto
-    {
-        public DateTime ExamDate { get; set; }
-        public string ExamTime { get; set; }
-        public bool NotifyMe { get; set; }
-    }
+    [Required(ErrorMessage = "La fecha del examen es requerida")]
+    public DateTime ExamDate { get; set; }
+
+    // Añade el '?' para que sea opcional
+    [StringLength(10, ErrorMessage = "La hora del examen no puede exceder 10 caracteres")]
+    public string? ExamTime { get; set; }
+
+    public bool NotifyMe { get; set; }
 }

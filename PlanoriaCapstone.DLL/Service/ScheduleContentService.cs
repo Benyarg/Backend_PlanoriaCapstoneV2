@@ -27,6 +27,36 @@ public class ScheduleContentService : IScheduleContentService
 
     public async Task<ScheduleContentResponseDto> AttachContentAsync(ScheduleContentRequestDto request)
     {
+        // ✅ Validar que el contenido pertenece al curso del horario
+        var schedule = await _scheduleRepository.GetByIdAsync(request.ScheduleId);
+        if (schedule == null)
+            throw new KeyNotFoundException($"Horario {request.ScheduleId} no encontrado");
+
+        // Obtener los cursos asociados al horario
+        var courseIds = schedule.ScheduleContents?
+            .Where(c => c.ContentType == "Course")
+            .Select(c => c.ContentId)
+            .ToList() ?? new List<int>();
+
+        // Si hay cursos asociados, validar que el contenido pertenezca a uno de ellos
+        if (courseIds.Any())
+        {
+            bool isValid = false;
+            if (request.ContentType == "flashcard_deck")
+            {
+                var deck = await _deckRepository.GetByIdAsync(request.ContentId);
+                isValid = deck != null && courseIds.Contains(deck.CourseId);
+            }
+            else if (request.ContentType == "quiz")
+            {
+                var quiz = await _quizRepository.GetByIdAsync(request.ContentId);
+                isValid = quiz != null && courseIds.Contains(quiz.CourseId);
+            }
+
+            if (!isValid)
+                throw new InvalidOperationException("El contenido no pertenece a los cursos asociados a este horario");
+        }
+
         var content = new ScheduleContent
         {
             ScheduleId = request.ScheduleId,

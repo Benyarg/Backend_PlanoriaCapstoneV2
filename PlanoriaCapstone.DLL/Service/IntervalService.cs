@@ -44,12 +44,30 @@ public class IntervalService : IIntervalService
 
     public async Task<IntervalResponseDto> UpdateAsync(int intervalId, IntervalResponseDto request)
     {
-        throw new NotImplementedException("Interval update requires a dedicated repository method.");
+        var interval = await _scheduleRepository.GetIntervalByIdAsync(intervalId);
+        if (interval == null) throw new KeyNotFoundException();
+
+        interval.IntervalType = request.IntervalType;
+        interval.DurationMinutes = request.DurationMinutes;
+        interval.OrderPosition = request.OrderPosition;
+
+        await _scheduleRepository.UpdateIntervalAsync(interval);
+
+        return new IntervalResponseDto
+        {
+            Id = interval.Id,
+            IntervalType = interval.IntervalType,
+            DurationMinutes = interval.DurationMinutes,
+            OrderPosition = interval.OrderPosition,
+            StartedAt = interval.StartedAt,
+            EndedAt = interval.EndedAt,
+            IsCompleted = interval.EndedAt.HasValue
+        };
     }
 
     public async Task<bool> DeleteAsync(int intervalId)
     {
-        throw new NotImplementedException("Interval delete requires a dedicated repository method.");
+        return await _scheduleRepository.DeleteIntervalAsync(intervalId);
     }
 
     public async Task ReorderAsync(int scheduleId, List<int> intervalIds)
@@ -63,6 +81,8 @@ public class IntervalService : IIntervalService
             if (newPos >= 0)
                 interval.OrderPosition = newPos;
         }
+
+        await _scheduleRepository.UpdateAsync(schedule);
 
         await _activityLogRepository.LogAsync(new ActivityLog
         {
@@ -97,11 +117,11 @@ public class IntervalService : IIntervalService
 
     public async Task StartTimerAsync(int intervalId)
     {
-        var schedule = await FindScheduleByInterval(intervalId);
-        var interval = schedule?.ScheduleIntervals?.FirstOrDefault(i => i.Id == intervalId);
+        var interval = await _scheduleRepository.GetIntervalByIdAsync(intervalId);
         if (interval == null) throw new KeyNotFoundException();
 
         interval.StartedAt = DateTime.UtcNow;
+        await _scheduleRepository.UpdateIntervalAsync(interval);
     }
 
     public async Task PauseTimerAsync(int intervalId)
@@ -116,11 +136,11 @@ public class IntervalService : IIntervalService
 
     public async Task StopTimerAsync(int intervalId)
     {
-        var schedule = await FindScheduleByInterval(intervalId);
-        var interval = schedule?.ScheduleIntervals?.FirstOrDefault(i => i.Id == intervalId);
+        var interval = await _scheduleRepository.GetIntervalByIdAsync(intervalId);
         if (interval == null) throw new KeyNotFoundException();
 
         interval.EndedAt = DateTime.UtcNow;
+        await _scheduleRepository.UpdateIntervalAsync(interval);
     }
 
     public async Task<IEnumerable<IntervalResponseDto>> GetTemplatesAsync()

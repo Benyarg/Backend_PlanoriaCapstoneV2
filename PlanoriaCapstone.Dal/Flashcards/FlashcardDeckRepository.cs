@@ -16,6 +16,7 @@ public class FlashcardDeckRepository : IFlashcardDeckRepository
     {
         return await _context.FlashcardDecks
             .Include(d => d.Flashcards)
+            .Include(d => d.Course)
             .FirstOrDefaultAsync(d => d.Id == id);
     }
     public async Task<IEnumerable<FlashcardDeck>> GetByUserIdAsync(int userId)
@@ -50,8 +51,15 @@ public class FlashcardDeckRepository : IFlashcardDeckRepository
 
     public async Task<bool> DeleteAsync(int id)
     {
-        var deck = await _context.FlashcardDecks.FindAsync(id);
+        var deck = await _context.FlashcardDecks
+            .Include(d => d.Flashcards)
+            .FirstOrDefaultAsync(d => d.Id == id);
         if (deck == null) return false;
+
+        var flashcardIds = deck.Flashcards.Select(f => f.Id).ToList();
+        var reviews = _context.FlashcardReviews.Where(r => flashcardIds.Contains(r.FlashcardId));
+        _context.FlashcardReviews.RemoveRange(reviews);
+
         _context.FlashcardDecks.Remove(deck);
         await _context.SaveChangesAsync();
         return true;

@@ -28,6 +28,7 @@ public class AuthService : IAuthService
         _configuration = configuration;
     }
 
+    //OPERACIONES PRINCIPALES
     public async Task<AuthResponseDto> RegisterAsync(RegisterRequestDto request)
     {
         var existing = await _userRepository.GetByEmailAsync(request.Email);
@@ -160,6 +161,7 @@ public class AuthService : IAuthService
         });
     }
 
+    //UTILIDADES INTERNAS
     private async Task<AuthResponseDto> GenerateAuthResponse(User user)
     {
         var token = GenerateJwtToken(user);
@@ -210,7 +212,7 @@ public class AuthService : IAuthService
             Id = user.Id,
             FullName = user.FullName,
             Email = user.Email,
-            Avatar = string.Empty,
+            Avatar = user.Avatar ?? string.Empty,
             Timezone = user.Timezone,
             PreferredLanguage = user.PreferredLanguage,
             Theme = user.Theme,

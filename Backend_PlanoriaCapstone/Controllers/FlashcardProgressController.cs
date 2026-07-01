@@ -1,3 +1,5 @@
+
+//NOTE: Falta verificar los endpoints
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using PlanoriaCapstone.Bll.Interface;

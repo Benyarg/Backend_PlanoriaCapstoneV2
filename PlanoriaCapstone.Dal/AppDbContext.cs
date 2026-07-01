@@ -51,6 +51,7 @@ namespace PlanoriaCapstone.Dal
                 e.Property(u => u.PreferredLanguage).HasMaxLength(10).HasDefaultValue("en");
                 e.Property(u => u.Theme).HasMaxLength(20).HasDefaultValue("light");
                 e.Property(u => u.Timezone).HasMaxLength(50).HasDefaultValue("UTC");
+                e.Property(u => u.Avatar).HasMaxLength(500);
                 e.Property(u => u.NotificationEnabled).HasDefaultValue(true);
                 e.Property(u => u.EmailNotifications).HasDefaultValue(true);
                 e.Property(u => u.DefaultSpacedRepetitionDays).HasDefaultValue("[1,3,7,14,30]");

@@ -1,26 +1,41 @@
+using iText.Commons.Actions.Contexts;
+using Microsoft.EntityFrameworkCore;
 using PlanoriaCapstone.Bll.Interface;
 using PlanoriaCapstone.Dal;
-using PlanoriaCapstone.DTOs.Cronograma.Responses;
 using PlanoriaCapstone.DTOs.Cronograma.Requests;
+using PlanoriaCapstone.DTOs.Cronograma.Responses;
 using PlanoriaCapstone.Models;
 
 namespace PlanoriaCapstone.Bll.Service;
 
 public class ScheduleService : IScheduleService
 {
+    private readonly AppDbContext _context;
     private readonly IStudyScheduleRepository _scheduleRepository;
     private readonly ICourseRepository _courseRepository;
     private readonly IActivityLogRepository _activityLogRepository;
+    private readonly IFlashcardDeckRepository _deckRepository;
+    private readonly IQuizRepository _quizRepository;
 
     public ScheduleService(
-        IStudyScheduleRepository scheduleRepository,
-        ICourseRepository courseRepository,
-        IActivityLogRepository activityLogRepository)
+    IStudyScheduleRepository scheduleRepository,
+    ICourseRepository courseRepository,
+    IActivityLogRepository activityLogRepository,
+    IFlashcardDeckRepository deckRepository,
+    IQuizRepository quizRepository,
+    AppDbContext context)
     {
         _scheduleRepository = scheduleRepository;
         _courseRepository = courseRepository;
         _activityLogRepository = activityLogRepository;
+        _deckRepository = deckRepository;
+        _quizRepository = quizRepository;
+        _context = context;
     }
+
+    // ============================================
+    // CRUD
+    // ============================================
 
     public async Task<ScheduleResponseDto> GetByIdAsync(int id)
     {
@@ -34,13 +49,17 @@ public class ScheduleService : IScheduleService
     public async Task<IEnumerable<ScheduleListResponseDto>> GetByUserAsync(int userId)
     {
         var schedules = await _scheduleRepository.GetByUserAsync(userId);
-        return schedules.Select(MapToListDto);
+        return await MapToListAsync(schedules);
+    }
+    public async Task<IEnumerable<StudySchedule>> GetByUserBasicAsync(int userId)
+    {
+        return await _scheduleRepository.GetByUserAsync(userId);
     }
 
     public async Task<IEnumerable<ScheduleListResponseDto>> GetByDateRangeAsync(int userId, DateTime from, DateTime to)
     {
         var schedules = await _scheduleRepository.GetByDateRangeAsync(userId, from, to);
-        return schedules.Select(MapToListDto);
+        return await MapToListAsync(schedules);
     }
 
     public async Task<ScheduleResponseDto> CreateAsync(int userId, CreateScheduleRequestDto request)
@@ -59,6 +78,19 @@ public class ScheduleService : IScheduleService
 
         var created = await _scheduleRepository.CreateAsync(schedule);
 
+        if (request.CourseIds != null)
+        {
+            foreach (var courseId in request.CourseIds)
+            {
+                await _scheduleRepository.AddContentAsync(new ScheduleContent
+                {
+                    ScheduleId = created.Id,
+                    ContentType = "Course",
+                    ContentId = courseId
+                });
+            }
+        }
+
         if (request.Intervals != null)
         {
             foreach (var interval in request.Intervals)
@@ -73,30 +105,25 @@ public class ScheduleService : IScheduleService
             }
         }
 
-        if (request.Content != null)
+        if (request.Content != null && request.CourseIds != null && request.CourseIds.Any())
         {
             foreach (var content in request.Content)
             {
-                await _scheduleRepository.AddContentAsync(new ScheduleContent
+                if (await ValidateContentBelongsToCourse(content, request.CourseIds))
                 {
-                    ScheduleId = created.Id,
-                    ContentType = content.ContentType,
-                    ContentId = content.ContentId,
-                    EstimatedMinutes = content.EstimatedMinutes > 0 ? content.EstimatedMinutes : null,
-                    Completed = false
-                });
+                    await _scheduleRepository.AddContentAsync(new ScheduleContent
+                    {
+                        ScheduleId = created.Id,
+                        ContentType = content.ContentType,
+                        ContentId = content.ContentId,
+                        EstimatedMinutes = content.EstimatedMinutes > 0 ? content.EstimatedMinutes : null,
+                        Completed = false
+                    });
+                }
             }
         }
 
-        await _activityLogRepository.LogAsync(new ActivityLog
-        {
-            UserId = userId,
-            Action = "CreateSchedule",
-            EntityType = "StudySchedule",
-            EntityId = created.Id,
-            CreatedAt = DateTime.UtcNow
-        });
-
+        await LogAsync(userId, "CreateSchedule", "StudySchedule", created.Id);
         return await GetByIdAsync(created.Id);
     }
 
@@ -117,42 +144,46 @@ public class ScheduleService : IScheduleService
     }
 
     public async Task<bool> DeleteAsync(int id)
-    {
-        return await _scheduleRepository.DeleteAsync(id);
-    }
+        => await _scheduleRepository.DeleteAsync(id);
+
+    // ============================================
+    // VISTAS DE CALENDARIO
+    // ============================================
 
     public async Task<object> GetMonthViewAsync(int userId, int year, int month)
     {
-        var monthStart = new DateTime(year, month, 1);
-        var monthEnd = monthStart.AddMonths(1).AddDays(-1);
-        var schedules = await _scheduleRepository.GetByDateRangeAsync(userId, monthStart, monthEnd);
+        var start = new DateTime(year, month, 1);
+        var end = start.AddMonths(1).AddDays(-1);
+        var schedules = await _scheduleRepository.GetByDateRangeAsync(userId, start, end);
+        var list = await MapToListAsync(schedules);
 
         return new
         {
             Year = year,
             Month = month,
-            Days = Enumerable.Range(1, monthEnd.Day).Select(day => new
+            Days = Enumerable.Range(1, end.Day).Select(day => new
             {
                 Date = new DateTime(year, month, day),
-                Schedules = schedules.Where(s => s.StartDatetime.Date <= new DateTime(year, month, day) && s.EndDatetime.Date >= new DateTime(year, month, day)).Select(MapToListDto)
+                Schedules = list.Where(s => s.StartDateTime.Date <= new DateTime(year, month, day) && s.EndDateTime.Date >= new DateTime(year, month, day))
             })
         };
     }
 
     public async Task<object> GetWeekViewAsync(int userId, int year, int week)
     {
-        var weekStart = new DateTime(year, 1, 1).AddDays((week - 1) * 7);
-        var weekEnd = weekStart.AddDays(7);
-        var schedules = await _scheduleRepository.GetByDateRangeAsync(userId, weekStart, weekEnd);
+        var start = new DateTime(year, 1, 1).AddDays((week - 1) * 7);
+        var end = start.AddDays(7);
+        var schedules = await _scheduleRepository.GetByDateRangeAsync(userId, start, end);
+        var list = await MapToListAsync(schedules);
 
         return new CalendarWeekResponseDto
         {
-            WeekStart = weekStart,
-            WeekEnd = weekEnd,
+            WeekStart = start,
+            WeekEnd = end,
             Days = Enumerable.Range(0, 7).Select(i => new CalendarDayResponseDto
             {
-                Date = weekStart.AddDays(i),
-                Schedules = schedules.Where(s => s.StartDatetime.Date <= weekStart.AddDays(i) && s.EndDatetime.Date >= weekStart.AddDays(i)).Select(MapToListDto).ToList(),
+                Date = start.AddDays(i),
+                Schedules = list.Where(s => s.StartDateTime.Date <= start.AddDays(i) && s.EndDateTime.Date >= start.AddDays(i)).ToList(),
                 TotalStudyMinutes = 0,
                 CompletedSessionsCount = schedules.Count(s => s.IsCompleted)
             }).ToList()
@@ -162,11 +193,12 @@ public class ScheduleService : IScheduleService
     public async Task<object> GetDayViewAsync(int userId, DateTime date)
     {
         var schedules = await _scheduleRepository.GetByDateRangeAsync(userId, date.Date, date.Date.AddDays(1));
+        var list = await MapToListAsync(schedules);
 
         return new CalendarDayResponseDto
         {
             Date = date,
-            Schedules = schedules.Select(MapToListDto).ToList(),
+            Schedules = list.ToList(),
             TotalStudyMinutes = (int)schedules.Sum(s => (s.EndDatetime - s.StartDatetime).TotalMinutes),
             CompletedSessionsCount = schedules.Count(s => s.IsCompleted)
         };
@@ -177,105 +209,154 @@ public class ScheduleService : IScheduleService
         var schedules = await _scheduleRepository.GetByDateRangeAsync(userId, from, to);
         return schedules.OrderBy(s => s.StartDatetime).Select(s => new
         {
-            Id = s.Id,
-            Title = s.Title,
+            s.Id,
+            s.Title,
             StartDateTime = s.StartDatetime,
             EndDateTime = s.EndDatetime,
-            IsCompleted = s.IsCompleted,
+            s.IsCompleted,
             DurationMinutes = (int)(s.EndDatetime - s.StartDatetime).TotalMinutes
         });
     }
 
+    // ============================================
+    // RECURRING
+    // ============================================
+
     public async Task CreateRecurringAsync(int userId, CreateScheduleRequestDto request, string recurrence)
     {
-        var currentStart = request.StartDateTime;
-        var count = recurrence.ToLower() switch
-        {
-            "daily" => 7,
-            "weekly" => 4,
-            "biweekly" => 2,
-            "monthly" => 3,
-            _ => 1
-        };
+        var current = request.StartDateTime;
+        var count = recurrence.ToLower() switch { "daily" => 7, "weekly" => 4, "biweekly" => 2, "monthly" => 3, _ => 1 };
 
         for (int i = 0; i < count; i++)
         {
-            var copy = new CreateScheduleRequestDto
+            await CreateAsync(userId, new CreateScheduleRequestDto
             {
                 Title = request.Title,
-                StartDateTime = currentStart,
-                EndDateTime = currentStart.Add(request.EndDateTime - request.StartDateTime),
+                StartDateTime = current,
+                EndDateTime = current.Add(request.EndDateTime - request.StartDateTime),
                 CourseIds = request.CourseIds,
                 Intervals = request.Intervals,
                 Content = request.Content
-            };
+            });
 
-            await CreateAsync(userId, copy);
-
-            currentStart = recurrence.ToLower() switch
+            current = recurrence.ToLower() switch
             {
-                "daily" => currentStart.AddDays(1),
-                "weekly" => currentStart.AddDays(7),
-                "biweekly" => currentStart.AddDays(14),
-                "monthly" => currentStart.AddMonths(1),
-                _ => currentStart
+                "daily" => current.AddDays(1),
+                "weekly" => current.AddDays(7),
+                "biweekly" => current.AddDays(14),
+                "monthly" => current.AddMonths(1),
+                _ => current
             };
         }
     }
 
-    public async Task UpdateRecurringAsync(int scheduleId, UpdateScheduleRequestDto request)
-    {
-        await UpdateAsync(scheduleId, request);
-    }
+    public Task UpdateRecurringAsync(int id, UpdateScheduleRequestDto r) => UpdateAsync(id, r);
+    public Task DeleteRecurringAsync(int id) => DeleteAsync(id);
 
-    public async Task DeleteRecurringAsync(int scheduleId)
-    {
-        await DeleteAsync(scheduleId);
-    }
+    // ============================================
+    // COMPLETAR
+    // ============================================
 
     public async Task MarkCompleteAsync(int scheduleId)
     {
-        var schedule = await _scheduleRepository.GetByIdAsync(scheduleId);
-        if (schedule == null) throw new KeyNotFoundException();
-
-        schedule.IsCompleted = true;
-        schedule.CompletedAt = DateTime.UtcNow;
-        schedule.UpdatedAt = DateTime.UtcNow;
-        await _scheduleRepository.UpdateAsync(schedule);
+        var s = await _scheduleRepository.GetByIdAsync(scheduleId) ?? throw new KeyNotFoundException();
+        s.IsCompleted = true;
+        s.CompletedAt = DateTime.UtcNow;
+        s.UpdatedAt = DateTime.UtcNow;
+        await _scheduleRepository.UpdateAsync(s);
     }
 
     public async Task MarkIncompleteAsync(int scheduleId)
     {
-        var schedule = await _scheduleRepository.GetByIdAsync(scheduleId);
-        if (schedule == null) throw new KeyNotFoundException();
-
-        schedule.IsCompleted = false;
-        schedule.CompletedAt = null;
-        schedule.UpdatedAt = DateTime.UtcNow;
-        await _scheduleRepository.UpdateAsync(schedule);
+        var s = await _scheduleRepository.GetByIdAsync(scheduleId) ?? throw new KeyNotFoundException();
+        s.IsCompleted = false;
+        s.CompletedAt = null;
+        s.UpdatedAt = DateTime.UtcNow;
+        await _scheduleRepository.UpdateAsync(s);
     }
 
-    public async Task BulkCompleteAsync(List<int> scheduleIds)
+    public async Task BulkCompleteAsync(List<int> ids)
     {
-        foreach (var id in scheduleIds)
-        {
-            await MarkCompleteAsync(id);
-        }
+        foreach (var id in ids) await MarkCompleteAsync(id);
     }
 
-    private ScheduleResponseDto MapToResponseDto(StudySchedule schedule)
+    // ============================================
+    // VALIDACIÓN
+    // ============================================
+
+    private async Task<bool> ValidateContentBelongsToCourse(ScheduleContentRequestDto content, List<int> courseIds)
+    {
+        if (content.ContentType == "flashcard_deck")
+        {
+            var deck = await _deckRepository.GetByIdAsync(content.ContentId);
+            return deck != null && courseIds.Contains(deck.CourseId);
+        }
+        if (content.ContentType == "quiz")
+        {
+            var quiz = await _quizRepository.GetByIdAsync(content.ContentId);
+            return quiz != null && courseIds.Contains(quiz.CourseId);
+        }
+        return false;
+    }
+
+    // ============================================
+    // MAPEO
+    // ============================================
+
+    private async Task<List<ScheduleListResponseDto>> MapToListAsync(IEnumerable<StudySchedule> schedules)
+    {
+        var scheduleList = schedules.ToList();
+        if (!scheduleList.Any()) return new List<ScheduleListResponseDto>();
+
+        var scheduleIds = scheduleList.Select(s => s.Id).ToList();
+
+        var courseMappings = await _context.ScheduleContents
+            .Where(c => scheduleIds.Contains(c.ScheduleId) && c.ContentType == "Course")
+            .ToListAsync();
+
+        var courseIds = courseMappings.Select(c => c.ContentId).Distinct().ToList();
+        var courses = await _context.Courses
+            .Where(c => courseIds.Contains(c.Id))
+            .ToDictionaryAsync(c => c.Id);
+
+        return scheduleList.Select(s =>
+        {
+            var mapping = courseMappings.FirstOrDefault(m => m.ScheduleId == s.Id);
+            var name = "";
+            var color = "#3498db";
+            if (mapping != null && courses.TryGetValue(mapping.ContentId, out var course))
+            {
+                name = course.Name;
+                color = course.ColorHex;
+            }
+            return new ScheduleListResponseDto
+            {
+                Id = s.Id,
+                Title = s.Title,
+                StartDateTime = s.StartDatetime,
+                EndDateTime = s.EndDatetime,
+                IsCompleted = s.IsCompleted,
+                ProgressPercentage = s.IsCompleted ? 100 : 0,
+                CourseName = name,
+                ColorHex = color
+            };
+        }).ToList();
+    }
+
+    private ScheduleResponseDto MapToResponseDto(StudySchedule s)
     {
         return new ScheduleResponseDto
         {
-            Id = schedule.Id,
-            Title = schedule.Title,
-            StartDateTime = schedule.StartDatetime,
-            EndDateTime = schedule.EndDatetime,
-            IsCompleted = schedule.IsCompleted,
-            CompletedAt = schedule.CompletedAt,
-            TotalDurationMinutes = (int)(schedule.EndDatetime - schedule.StartDatetime).TotalMinutes,
-            CourseIds = new List<int>(),
-            Intervals = schedule.ScheduleIntervals?.Select(i => new IntervalResponseDto
+            Id = s.Id,
+            UserId = s.UserId,
+            Title = s.Title,
+            StartDateTime = s.StartDatetime,
+            EndDateTime = s.EndDatetime,
+            IsCompleted = s.IsCompleted,
+            CompletedAt = s.CompletedAt,
+            TotalDurationMinutes = (int)(s.EndDatetime - s.StartDatetime).TotalMinutes,
+            CourseIds = s.ScheduleContents?.Where(c => c.ContentType == "Course").Select(c => c.ContentId).ToList() ?? new List<int>(),
+            Intervals = s.ScheduleIntervals?.Select(i => new IntervalResponseDto
             {
                 Id = i.Id,
                 IntervalType = i.IntervalType,
@@ -285,12 +366,12 @@ public class ScheduleService : IScheduleService
                 EndedAt = i.EndedAt,
                 IsCompleted = i.EndedAt.HasValue
             }).ToList() ?? new List<IntervalResponseDto>(),
-            Content = schedule.ScheduleContents?.Select(c => new ScheduleContentResponseDto
+            Content = s.ScheduleContents?.Where(c => c.ContentType != "Course").Select(c => new ScheduleContentResponseDto
             {
                 Id = c.Id,
                 ContentType = c.ContentType,
                 ContentId = c.ContentId,
-                ContentName = string.Empty,
+                ContentName = GetContentName(c),
                 EstimatedMinutes = c.EstimatedMinutes ?? 0,
                 Completed = c.Completed,
                 CompletedAt = c.CompletedAt
@@ -298,17 +379,28 @@ public class ScheduleService : IScheduleService
         };
     }
 
-    private ScheduleListResponseDto MapToListDto(StudySchedule schedule)
+    private string GetContentName(ScheduleContent c)
     {
-        return new ScheduleListResponseDto
+        if (c.ContentType == "flashcard_deck")
+            return _deckRepository.GetByIdAsync(c.ContentId).Result?.Name ?? $"Deck #{c.ContentId}";
+        if (c.ContentType == "quiz")
+            return _quizRepository.GetByIdAsync(c.ContentId).Result?.Title ?? $"Quiz #{c.ContentId}";
+        return "";
+    }
+
+    private async Task LogAsync(int userId, string action, string entity, int? entityId)
+    {
+        try
         {
-            Id = schedule.Id,
-            Title = schedule.Title,
-            StartDateTime = schedule.StartDatetime,
-            EndDateTime = schedule.EndDatetime,
-            IsCompleted = schedule.IsCompleted,
-            ProgressPercentage = schedule.IsCompleted ? 100 : 0,
-            CourseName = string.Empty
-        };
+            await _activityLogRepository.LogAsync(new ActivityLog
+            {
+                UserId = userId,
+                Action = action,
+                EntityType = entity,
+                EntityId = entityId,
+                CreatedAt = DateTime.UtcNow
+            });
+        }
+        catch { }
     }
 }

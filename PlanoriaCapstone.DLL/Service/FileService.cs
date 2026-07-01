@@ -22,6 +22,8 @@ public class FileService : IFileService
         _activityLogRepository = activityLogRepository;
     }
 
+
+    //region CRUD - Gestión de Archivos
     public async Task<FileUploadResponseDto> UploadAsync(int userId, int courseId, Stream fileStream, string fileName, string contentType, long fileSize)
     {
         var uploadsDir = Path.Combine(_env.WebRootPath, "assets", "uploads", userId.ToString());
@@ -89,6 +91,7 @@ public class FileService : IFileService
         return await _fileRepository.DeleteAsync(fileId);
     }
 
+    //Processing - Lógica de Conversión e IA
     public async Task<FileProcessingStatusResponseDto> ProcessFileAsync(int fileId, int targetCourseId, string contentType)
     {
         var file = await _fileRepository.GetByIdAsync(fileId);
@@ -186,17 +189,19 @@ public class FileService : IFileService
         };
     }
 
+    //Access - Descarga y Streams
     public async Task<(Stream Stream, string ContentType, string FileName)> DownloadAsync(int fileId)
     {
         var file = await _fileRepository.GetByIdAsync(fileId)
             ?? throw new FileNotFoundException($"File with ID {fileId} not found.");
 
         var fullPath = Path.Combine(_env.WebRootPath, file.FilePath);
-        var stream = new FileStream(fullPath, FileMode.Open, FileAccess.Read);
+        var stream = new FileStream(fullPath, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, FileOptions.Asynchronous | FileOptions.DeleteOnClose);
 
         return (stream, file.MimeType, file.OriginalFilename);
     }
 
+    //NOTE: no tine endpoint en el controlador
     public async Task<string?> GetFileUrlAsync(int fileId)
     {
         var file = await _fileRepository.GetByIdAsync(fileId);
@@ -209,14 +214,16 @@ public class FileService : IFileService
             ?? throw new FileNotFoundException($"File with ID {fileId} not found.");
 
         var fullPath = Path.Combine(_env.WebRootPath, file.FilePath);
-        return new FileStream(fullPath, FileMode.Open, FileAccess.Read);
+        return new FileStream(fullPath, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, FileOptions.Asynchronous | FileOptions.DeleteOnClose);
     }
 
+    //Private Helpers
     private static FileUploadResponseDto MapToUploadResponseDto(FileUpload file)
     {
         return new FileUploadResponseDto
         {
             Id = file.Id,
+            UserId = file.UserId,
             OriginalFilename = file.OriginalFilename,
             FileSize = file.FileSizeBytes,
             FileType = file.FileType,

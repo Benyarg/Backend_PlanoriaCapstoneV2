@@ -1,3 +1,4 @@
+//Revisado
 using Backend_PlanoriaCapstone.Extensions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -18,22 +19,30 @@ namespace Backend_PlanoriaCapstone.Controllers
             _quizService = quizService;
         }
 
+        //(CRUD)
+
         [HttpGet]
         public async Task<IActionResult> GetAll([FromQuery] int? courseId)
         {
+            var userId = User.ObtenerUserId();
+            if (userId == null) return Unauthorized();
+
             if (courseId.HasValue)
             {
-                var items = await _quizService.GetByCourseIdAsync(courseId.Value);
+                var items = await _quizService.GetByCourseIdAsync(courseId.Value, userId.Value);
                 return Ok(items);
             }
-            var all = await _quizService.GetAllAsync();
+            var all = await _quizService.GetAllAsync(userId.Value);
             return Ok(all);
         }
 
         [HttpGet("{id}")]
         public async Task<IActionResult> GetById(int id)
         {
-            var result = await _quizService.GetByIdAsync(id);
+            var userId = User.ObtenerUserId();
+            if (userId == null) return Unauthorized();
+
+            var result = await _quizService.GetByIdAsync(id, userId.Value);
             return Ok(result);
         }
 
@@ -71,7 +80,9 @@ namespace Backend_PlanoriaCapstone.Controllers
             return CreatedAtAction(nameof(GetById), new { id = result.Id }, result);
         }
 
+        //Gestión de Preguntas
         [HttpGet("{id}/questions")]
+
         public async Task<IActionResult> GetQuestions(int id)
         {
             var questions = await _quizService.GetQuestionsAsync(id);
@@ -108,6 +119,7 @@ namespace Backend_PlanoriaCapstone.Controllers
             return NoContent();
         }
 
+        //Gestión de Opciones por pregunta
         [HttpPost("{id}/questions/{questionId:int}/options")]
         public async Task<IActionResult> CreateOption(int id, int questionId, [FromBody] CreateOptionRequestDto request)
         {
@@ -131,6 +143,7 @@ namespace Backend_PlanoriaCapstone.Controllers
             return NoContent();
         }
 
+        //Configuración y Ajustes (Settings) de quiz
         [HttpGet("{id}/settings")]
         public async Task<IActionResult> GetSettings(int id)
         {
@@ -152,6 +165,7 @@ namespace Backend_PlanoriaCapstone.Controllers
             return NoContent();
         }
 
+        //Vista Previa y Simulación
         [HttpGet("{id}/preview")]
         public async Task<IActionResult> Preview(int id)
         {

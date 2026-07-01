@@ -119,7 +119,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 
 builder.Services.AddAuthorization();
 
-// ✅ CORS CORREGIDO
+// CORS
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowAll", policy =>
@@ -131,24 +131,71 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
-// AUTO-MIGRATE
+// AUTO-MIGRATE with recovery
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    for (int i = 0; i < 10; i++)
+
+    for (int i = 0; i < 30; i++)
     {
-        try
+        try { if (db.Database.CanConnect()) break; }
+        catch { if (i == 29) throw; Thread.Sleep(1000); }
+    }
+
+    try
+    {
+        db.Database.Migrate();
+    }
+    catch (Exception ex)
+    {
+        var inner = ex;
+        while (inner is not null and not Microsoft.Data.SqlClient.SqlException)
+            inner = inner.InnerException;
+        if (inner is Microsoft.Data.SqlClient.SqlException sqlEx)
         {
-            db.Database.Migrate();
-            break;
+            if (sqlEx.Number == 1801) return;
+            if (sqlEx.Number != 2714) throw;
         }
-        catch
+        else throw;
+
+        foreach (var m in db.Database.GetMigrations())
         {
-            if (i == 9) throw;
-            Thread.Sleep(3000);
+            db.Database.ExecuteSqlRaw(
+                "IF NOT EXISTS (SELECT 1 FROM [__EFMigrationsHistory] WHERE [MigrationId] = {0}) " +
+                "INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion]) VALUES ({0}, {1})",
+                m, "8.0.0");
         }
     }
 }
+
+// GLOBAL EXCEPTION HANDLER
+app.UseExceptionHandler(appBuilder =>
+{
+    appBuilder.Run(async context =>
+    {
+        context.Response.ContentType = "application/json";
+        var exceptionHandlerPathFeature =
+            context.Features.Get<Microsoft.AspNetCore.Diagnostics.IExceptionHandlerPathFeature>();
+        var exception = exceptionHandlerPathFeature?.Error;
+
+        context.Response.StatusCode = exception switch
+        {
+            UnauthorizedAccessException => 401,
+            KeyNotFoundException => 404,
+            ArgumentException => 400,
+            _ => 500
+        };
+
+        var response = new
+        {
+            statusCode = context.Response.StatusCode,
+            message = exception?.Message ?? "Ocurrió un error inesperado.",
+            timestamp = DateTime.UtcNow
+        };
+
+        await context.Response.WriteAsJsonAsync(response);
+    });
+});
 
 app.UseSwagger();
 app.UseSwaggerUI(c => { c.SwaggerEndpoint("/swagger/v1/swagger.json", "Planoria API v1"); });
@@ -160,7 +207,6 @@ if (app.Environment.IsDevelopment())
 
 app.UseStaticFiles();
 
-// ✅ CORS antes de Auth
 app.UseCors("AllowAll");
 
 app.UseAuthentication();

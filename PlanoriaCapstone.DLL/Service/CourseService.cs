@@ -26,16 +26,10 @@ public class CourseService : ICourseService
         _activityLogRepository = activityLogRepository;
     }
 
-    public async Task<CourseResponseDto?> GetByIdAsync(int id)
-    {
-        var course = await _courseRepository.GetByIdAsync(id);
-        if (course == null) return null;
+    //  GESTION DE CURSOS
 
-        var progress = await _progressRepository.GetByUserAndCourseAsync(course.UserId, id);
 
-        return MapToResponseDto(course, progress);
-    }
-
+    // Obtiene la lista de cursos del usuario con su progreso y los ordena por fecha de examen.
     public async Task<IEnumerable<CourseListResponseDto>> GetByUserIdAsync(int userId)
     {
         var courses = await _courseRepository.GetByUserIdAsync(userId);
@@ -48,6 +42,17 @@ public class CourseService : ICourseService
         }
 
         return dtos.OrderByDescending(c => c.ExamDate ?? DateTime.MaxValue);
+    }
+
+    // Busca el curso y cuánto ha avanzado el usuario en ese curso.
+    public async Task<CourseResponseDto?> GetByIdAsync(int id)
+    {
+        var course = await _courseRepository.GetByIdAsync(id);
+        if (course == null) return null;
+
+        var progress = await _progressRepository.GetByUserAndCourseAsync(course.UserId, id);
+
+        return MapToResponseDto(course, progress);
     }
 
     public async Task<CourseResponseDto> CreateAsync(int userId, CreateCourseRequestDto request)
@@ -92,7 +97,6 @@ public class CourseService : ICourseService
 
         return MapToResponseDto(created, null);
     }
-
     public async Task<CourseResponseDto?> UpdateAsync(int id, UpdateCourseRequestDto request)
     {
         var course = await _courseRepository.GetByIdAsync(id);
@@ -105,11 +109,16 @@ public class CourseService : ICourseService
         if (request.IsArchived.HasValue)
             course.IsArchived = request.IsArchived.Value;
 
-        if (request.ExamDate.HasValue)
-            course.ExamDate = request.ExamDate;
+        course.ExamDate = request.ExamDate;
 
-        if (!string.IsNullOrEmpty(request.ExamTime) && TimeSpan.TryParse(request.ExamTime, out var examTime))
-            course.ExamTime = examTime;
+        if (request.ExamTime != null)
+        {
+            course.ExamTime = TimeSpan.TryParse(request.ExamTime, out var examTime) ? examTime : null;
+        }
+        else
+        {
+            course.ExamTime = null;
+        }
 
         course.UpdatedAt = DateTime.UtcNow;
 
@@ -188,6 +197,68 @@ public class CourseService : ICourseService
         });
     }
 
+    public async Task<IEnumerable<CourseListResponseDto>> SearchAsync(int userId, CourseSearchRequestDto request)
+    {
+        var courses = await _courseRepository.GetByUserIdAsync(userId);
+
+        if (!string.IsNullOrEmpty(request.Query))
+        {
+            var query = request.Query.ToLower();
+            courses = courses.Where(c =>
+                c.Name.ToLower().Contains(query) ||
+                (c.Description?.ToLower().Contains(query) ?? false));
+        }
+
+        if (!string.IsNullOrEmpty(request.Status))
+        {
+            if (request.Status.ToLower() == "archived")
+                courses = courses.Where(c => c.IsArchived);
+            else if (request.Status.ToLower() == "active")
+                courses = courses.Where(c => !c.IsArchived);
+        }
+
+        courses = request.SortBy?.ToLower() switch
+        {
+            "name" => request.SortOrder?.ToLower() == "desc"
+                ? courses.OrderByDescending(c => c.Name)
+                : courses.OrderBy(c => c.Name),
+            "examdate" => request.SortOrder?.ToLower() == "desc"
+                ? courses.OrderByDescending(c => c.ExamDate)
+                : courses.OrderBy(c => c.ExamDate),
+            "created" => request.SortOrder?.ToLower() == "desc"
+                ? courses.OrderByDescending(c => c.CreatedAt)
+                : courses.OrderBy(c => c.CreatedAt),
+            _ => courses.OrderByDescending(c => c.CreatedAt)
+        };
+
+        var dtos = new List<CourseListResponseDto>();
+        foreach (var course in courses)
+        {
+            var progress = await _progressRepository.GetByUserAndCourseAsync(userId, course.Id);
+            dtos.Add(MapToListDto(course, progress));
+        }
+
+        return dtos;
+    }
+
+    public async Task<CourseStatsResponseDto> GetStatsAsync(int courseId, int userId)
+    {
+        var progress = await _progressRepository.GetByUserAndCourseAsync(userId, courseId);
+
+        return new CourseStatsResponseDto
+        {
+            TotalFlashcards = progress?.TotalFlashcards ?? 0,
+            FlashcardsMastered = progress?.FlashcardsMastered ?? 0,
+            TotalQuizzes = progress?.TotalQuizzes ?? 0,
+            QuizzesPassed = progress?.QuizzesPassed ?? 0,
+            AverageQuizScore = progress?.ExamReadinessScore ?? 0,
+            StudyTimeHours = 0,
+            LastActiveAt = progress?.LastCalculatedAt
+        };
+    }
+
+    //GESTION DE FECHAS DE EXAMENES
+
     public async Task SetExamDateAsync(int id, SetExamDateRequestDto request)
     {
         var course = await _courseRepository.GetByIdAsync(id);
@@ -257,6 +328,8 @@ public class CourseService : ICourseService
         });
     }
 
+
+    //CURSOS COMPARTIDOS
     public async Task<IEnumerable<CourseMemberResponseDto>> GetMembersAsync(int courseId)
     {
         var course = await _courseRepository.GetByIdAsync(courseId);
@@ -366,66 +439,8 @@ public class CourseService : ICourseService
         });
     }
 
-    public async Task<CourseStatsResponseDto> GetStatsAsync(int courseId, int userId)
-    {
-        var progress = await _progressRepository.GetByUserAndCourseAsync(userId, courseId);
 
-        return new CourseStatsResponseDto
-        {
-            TotalFlashcards = progress?.TotalFlashcards ?? 0,
-            FlashcardsMastered = progress?.FlashcardsMastered ?? 0,
-            TotalQuizzes = progress?.TotalQuizzes ?? 0,
-            QuizzesPassed = progress?.QuizzesPassed ?? 0,
-            AverageQuizScore = progress?.ExamReadinessScore ?? 0,
-            StudyTimeHours = 0,
-            LastActiveAt = progress?.LastCalculatedAt
-        };
-    }
-
-    public async Task<IEnumerable<CourseListResponseDto>> SearchAsync(int userId, CourseSearchRequestDto request)
-    {
-        var courses = await _courseRepository.GetByUserIdAsync(userId);
-
-        if (!string.IsNullOrEmpty(request.Query))
-        {
-            var query = request.Query.ToLower();
-            courses = courses.Where(c =>
-                c.Name.ToLower().Contains(query) ||
-                (c.Description?.ToLower().Contains(query) ?? false));
-        }
-
-        if (!string.IsNullOrEmpty(request.Status))
-        {
-            if (request.Status.ToLower() == "archived")
-                courses = courses.Where(c => c.IsArchived);
-            else if (request.Status.ToLower() == "active")
-                courses = courses.Where(c => !c.IsArchived);
-        }
-
-        courses = request.SortBy?.ToLower() switch
-        {
-            "name" => request.SortOrder?.ToLower() == "desc"
-                ? courses.OrderByDescending(c => c.Name)
-                : courses.OrderBy(c => c.Name),
-            "examdate" => request.SortOrder?.ToLower() == "desc"
-                ? courses.OrderByDescending(c => c.ExamDate)
-                : courses.OrderBy(c => c.ExamDate),
-            "created" => request.SortOrder?.ToLower() == "desc"
-                ? courses.OrderByDescending(c => c.CreatedAt)
-                : courses.OrderBy(c => c.CreatedAt),
-            _ => courses.OrderByDescending(c => c.CreatedAt)
-        };
-
-        var dtos = new List<CourseListResponseDto>();
-        foreach (var course in courses)
-        {
-            var progress = await _progressRepository.GetByUserAndCourseAsync(userId, course.Id);
-            dtos.Add(MapToListDto(course, progress));
-        }
-
-        return dtos;
-    }
-
+    //UTILIDADES
     private CourseResponseDto MapToResponseDto(Course course, UserCourseExamProgress? progress)
     {
         return new CourseResponseDto
@@ -458,4 +473,5 @@ public class CourseService : ICourseService
             LastStudiedAt = progress?.LastCalculatedAt
         };
     }
+
 }

@@ -49,8 +49,8 @@ public class CourseProgressService : ICourseProgressService
             TotalProgressPercentage = progress?.TotalFlashcards > 0
                 ? (decimal)(progress.FlashcardsStudied + progress.QuizzesCompleted) / Math.Max(1, progress.TotalFlashcards + progress.TotalQuizzes) * 100
                 : 0,
-            RequiredDailyCards = daysRemaining > 0 ? totalFlashcards / daysRemaining : totalFlashcards,
-            RequiredDailyQuizzes = daysRemaining > 0 ? totalQuizzes / daysRemaining : totalQuizzes,
+            RequiredDailyCards = totalFlashcards / Math.Max(1, daysRemaining),
+            RequiredDailyQuizzes = totalQuizzes / Math.Max(1, daysRemaining),
             IsOnTrack = (progress?.ExamReadinessScore ?? 0) >= 70
         };
     }
@@ -134,7 +134,7 @@ public class CourseProgressService : ICourseProgressService
 
         return new
         {
-            PredictedScore = Math.Min(100, avgScore + (daysUntilExam > 0 ? (100 - avgScore) / daysUntilExam * 7 : 0)),
+            PredictedScore = Math.Min(100, avgScore + (100 - avgScore) / Math.Max(1, daysUntilExam) * 7),
             EstimatedDaysToTarget = daysUntilExam,
             ConfidenceLevel = history.Count() >= 5 ? "High" : "Medium",
             RequiredDailyStudyHours = Math.Max(1, (100 - avgScore) / 10)

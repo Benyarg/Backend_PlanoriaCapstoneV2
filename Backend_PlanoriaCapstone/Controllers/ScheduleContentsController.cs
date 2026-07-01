@@ -1,8 +1,8 @@
+//Revisado
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using PlanoriaCapstone.Bll.Interface;
 using PlanoriaCapstone.DTOs.Cronograma.Requests;
-using PlanoriaCapstone.DTOs.Cronograma.Responses;
 using Backend_PlanoriaCapstone.Extensions;
 
 namespace Backend_PlanoriaCapstone.Controllers
@@ -23,22 +23,40 @@ namespace Backend_PlanoriaCapstone.Controllers
             _scheduleService = scheduleService;
         }
 
+        //GESTIÓN DE CONTENIDO ASIGNADO
         [HttpPost]
         public async Task<IActionResult> AttachContent(int scheduleId, [FromBody] ScheduleContentRequestDto request)
         {
             var userId = User.ObtenerUserId();
             if (userId == null) return Unauthorized();
 
+            // ✅ Hereda el CourseId si viene del JSON raíz
             request = new ScheduleContentRequestDto
             {
                 ContentType = request.ContentType,
                 ContentId = request.ContentId,
                 EstimatedMinutes = request.EstimatedMinutes,
-                ScheduleId = request.ScheduleId > 0 ? request.ScheduleId : scheduleId
+                ScheduleId = request.ScheduleId > 0 ? request.ScheduleId : scheduleId,
+                CourseId = request.CourseId,  // ← Se pasa al servicio
+                OrderPosition = request.OrderPosition ?? 0
             };
 
             var result = await _scheduleContentService.AttachContentAsync(request);
             return Ok(result);
+        }
+        [HttpGet]
+        public async Task<IActionResult> GetAssignedContent(int scheduleId)
+        {
+
+            var result = await _scheduleContentService.GetAssignedContentAsync(scheduleId);
+            return Ok(result);
+        }
+
+        [HttpPut("reorder")]
+        public async Task<IActionResult> ReorderContent(int scheduleId, [FromBody] List<int> contentIds)
+        {
+            await _scheduleContentService.ReorderContentAsync(scheduleId, contentIds);
+            return Ok(new { message = "Content reordered" });
         }
 
         [HttpDelete]
@@ -49,20 +67,7 @@ namespace Backend_PlanoriaCapstone.Controllers
             return NoContent();
         }
 
-        [HttpPut("reorder")]
-        public async Task<IActionResult> ReorderContent(int scheduleId, [FromBody] List<int> contentIds)
-        {
-            await _scheduleContentService.ReorderContentAsync(scheduleId, contentIds);
-            return Ok(new { message = "Content reordered" });
-        }
-
-        [HttpGet]
-        public async Task<IActionResult> GetAssignedContent(int scheduleId)
-        {
-            var result = await _scheduleContentService.GetAssignedContentAsync(scheduleId);
-            return Ok(result);
-        }
-
+        //AUTO-ASIGNACIÓN Y PRIORIZACIÓN 
         [HttpPost("auto-assign")]
         public async Task<IActionResult> AutoAssign(int scheduleId)
         {
@@ -80,7 +85,6 @@ namespace Backend_PlanoriaCapstone.Controllers
             var result = await _scheduleContentService.PrioritizeByExamAsync(userId.Value, courseId, scheduleId);
             return Ok(result);
         }
-
         [HttpPost("prioritize-weakness")]
         public async Task<IActionResult> PrioritizeByWeakness(int scheduleId, [FromQuery] int courseId)
         {
@@ -90,6 +94,8 @@ namespace Backend_PlanoriaCapstone.Controllers
             return Ok(result);
         }
 
+
+        // SUGERENCIAS Y OPTIMIZACIÓN
         [HttpGet("suggest-session")]
         public async Task<IActionResult> SuggestSession(int scheduleId, [FromQuery] int courseId)
         {

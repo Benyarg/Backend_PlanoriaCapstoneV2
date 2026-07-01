@@ -23,6 +23,7 @@ public class StudyScheduleRepository : IStudyScheduleRepository
     public async Task<IEnumerable<StudySchedule>> GetByUserAsync(int userId)
     {
         return await _context.StudySchedules
+            .Include(s => s.ScheduleContents)  // ✅ AGREGADO
             .Where(s => s.UserId == userId)
             .OrderByDescending(s => s.StartDatetime)
             .ToListAsync();
@@ -31,7 +32,8 @@ public class StudyScheduleRepository : IStudyScheduleRepository
     public async Task<IEnumerable<StudySchedule>> GetByDateRangeAsync(int userId, DateTime from, DateTime to)
     {
         return await _context.StudySchedules
-            .Where(s => s.UserId == userId && s.StartDatetime >= from && s.EndDatetime <= to)
+            .Include(s => s.ScheduleContents)  // ✅ AGREGADO
+            .Where(s => s.UserId == userId && s.StartDatetime <= to && s.EndDatetime >= from)
             .OrderBy(s => s.StartDatetime)
             .ToListAsync();
     }
@@ -71,5 +73,25 @@ public class StudyScheduleRepository : IStudyScheduleRepository
         _context.ScheduleContents.Add(content);
         await _context.SaveChangesAsync();
         return content;
+    }
+
+    public async Task<ScheduleInterval?> GetIntervalByIdAsync(int id)
+    {
+        return await _context.ScheduleIntervals.FindAsync(id);
+    }
+
+    public async Task UpdateIntervalAsync(ScheduleInterval interval)
+    {
+        _context.ScheduleIntervals.Update(interval);
+        await _context.SaveChangesAsync();
+    }
+
+    public async Task<bool> DeleteIntervalAsync(int id)
+    {
+        var interval = await _context.ScheduleIntervals.FindAsync(id);
+        if (interval == null) return false;
+        _context.ScheduleIntervals.Remove(interval);
+        await _context.SaveChangesAsync();
+        return true;
     }
 }
