@@ -14,19 +14,25 @@ public class CourseService : ICourseService
     private readonly IUserRepository _userRepository;
     private readonly IActivityLogRepository _activityLogRepository;
     private readonly IStudyScheduleRepository _scheduleRepository;
+    private readonly IFlashcardDeckRepository _deckRepository;
+    private readonly IQuizRepository _quizRepository;
 
     public CourseService(
         ICourseRepository courseRepository,
         IUserCourseExamProgressRepository progressRepository,
         IUserRepository userRepository,
         IActivityLogRepository activityLogRepository,
-        IStudyScheduleRepository scheduleRepository)
+        IStudyScheduleRepository scheduleRepository,
+        IFlashcardDeckRepository deckRepository,
+        IQuizRepository quizRepository)
     {
         _courseRepository = courseRepository;
         _progressRepository = progressRepository;
         _userRepository = userRepository;
         _activityLogRepository = activityLogRepository;
         _scheduleRepository = scheduleRepository;
+        _deckRepository = deckRepository;
+        _quizRepository = quizRepository;
     }
 
     //  GESTION DE CURSOS
@@ -55,7 +61,12 @@ public class CourseService : ICourseService
 
         var progress = await _progressRepository.GetByUserAndCourseAsync(course.UserId, id);
 
-        return MapToResponseDto(course, progress);
+        var totalFlashcards = (await _deckRepository.GetByCourseIdAsync(id))
+            .Sum(d => d.TotalCards);
+        var totalQuizzes = (await _quizRepository.GetByCourseIdAsync(id, course.UserId))
+            .Count();
+
+        return MapToResponseDto(course, progress, totalFlashcards, totalQuizzes);
     }
 
     public async Task<CourseResponseDto> CreateAsync(int userId, CreateCourseRequestDto request)
@@ -509,7 +520,7 @@ public class CourseService : ICourseService
 
 
     //UTILIDADES
-    private CourseResponseDto MapToResponseDto(Course course, UserCourseExamProgress? progress)
+    private CourseResponseDto MapToResponseDto(Course course, UserCourseExamProgress? progress, int totalFlashcards = 0, int totalQuizzes = 0)
     {
         return new CourseResponseDto
         {
@@ -520,8 +531,8 @@ public class CourseService : ICourseService
             ExamTime = course.ExamTime?.ToString(@"hh\:mm") ?? string.Empty,
             ColorHex = course.ColorHex,
             IsArchived = course.IsArchived,
-            TotalFlashcards = progress?.TotalFlashcards ?? 0,
-            TotalQuizzes = progress?.TotalQuizzes ?? 0,
+            TotalFlashcards = totalFlashcards,
+            TotalQuizzes = totalQuizzes,
             ProgressPercentage = progress?.ExamReadinessScore ?? 0,
             CreatedAt = course.CreatedAt,
             UpdatedAt = course.UpdatedAt
