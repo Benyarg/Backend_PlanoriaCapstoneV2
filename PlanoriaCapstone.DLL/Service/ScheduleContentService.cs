@@ -82,7 +82,15 @@ public class ScheduleContentService : IScheduleContentService
 
     public async Task<bool> DetachContentAsync(int scheduleId, int contentId)
     {
-        throw new NotImplementedException("Content detach requires a dedicated repository method.");
+        var schedule = await _scheduleRepository.GetByIdAsync(scheduleId);
+        if (schedule == null)
+            throw new KeyNotFoundException($"Horario {scheduleId} no encontrado");
+
+        var content = schedule.ScheduleContents?.FirstOrDefault(c => c.Id == contentId && c.ContentType != "Course");
+        if (content == null)
+            return false;
+
+        return await _scheduleRepository.RemoveContentAsync(contentId);
     }
 
     public async Task ReorderContentAsync(int scheduleId, List<int> contentIds)
@@ -100,22 +108,94 @@ public class ScheduleContentService : IScheduleContentService
         if (schedule?.ScheduleContents == null)
             return Enumerable.Empty<ScheduleContentResponseDto>();
 
-        return schedule.ScheduleContents.Select(c => new ScheduleContentResponseDto
+        var result = new List<ScheduleContentResponseDto>();
+        foreach (var c in schedule.ScheduleContents)
         {
-            Id = c.Id,
-            ContentType = c.ContentType,
-            ContentId = c.ContentId,
-            ContentName = string.Empty,
-            EstimatedMinutes = c.EstimatedMinutes ?? 0,
-            Completed = c.Completed,
-            CompletedAt = c.CompletedAt
-        });
+            string name = "";
+            if (c.ContentType == "flashcard_deck")
+            {
+                var deck = await _deckRepository.GetByIdAsync(c.ContentId);
+                name = deck?.Name ?? $"Deck #{c.ContentId}";
+            }
+            else if (c.ContentType == "quiz")
+            {
+                var quiz = await _quizRepository.GetByIdAsync(c.ContentId);
+                name = quiz?.Title ?? $"Quiz #{c.ContentId}";
+            }
+            else if (c.ContentType == "Course")
+                continue;
+
+            result.Add(new ScheduleContentResponseDto
+            {
+                Id = c.Id,
+                ContentType = c.ContentType,
+                ContentId = c.ContentId,
+                ContentName = name,
+                EstimatedMinutes = c.EstimatedMinutes ?? 0,
+                Completed = c.Completed,
+                CompletedAt = c.CompletedAt
+            });
+        }
+        return result;
     }
 
-    public async Task AutoAssignAsync(int userId, int scheduleId)
+    public async Task<int> AutoAssignAsync(int userId, int scheduleId)
     {
+        var schedule = await _scheduleRepository.GetByIdAsync(scheduleId);
+        if (schedule == null)
+            throw new KeyNotFoundException($"Horario {scheduleId} no encontrado");
+
+        var courseIds = schedule.ScheduleContents?
+            .Where(c => c.ContentType == "Course")
+            .Select(c => c.ContentId)
+            .ToList() ?? new List<int>();
+
+        if (!courseIds.Any())
+            return 0;
+
+        var random = new Random();
+        var assignedCount = 0;
+
+        foreach (var courseId in courseIds)
+        {
+            var decks = await _deckRepository.GetByCourseIdAsync(courseId);
+            var quizzes = await _quizRepository.GetByCourseIdAsync(courseId);
+
+            var deckContent = decks.Select(d => new { Type = "flashcard_deck", d.Id, Title = d.Name, EstimatedMinutes = d.TotalCards * 2 }).ToList();
+            var quizContent = quizzes.Select(q => new { Type = "quiz", q.Id, q.Title, EstimatedMinutes = q.TimeLimitMinutes ?? 30 }).ToList();
+            var allContent = deckContent.Concat(quizContent).ToList();
+
+            var existingIds = schedule.ScheduleContents?
+                .Where(sc => sc.ContentType == "flashcard_deck" || sc.ContentType == "quiz")
+                .Select(sc => (sc.ContentType, sc.ContentId))
+                .ToHashSet() ?? new HashSet<(string, int)>();
+
+            var available = allContent
+                .Where(c => !existingIds.Contains((c.Type, c.Id)))
+                .ToList();
+
+            if (available.Count == 0) continue;
+
+            var selectedCount = Math.Min(3, available.Count);
+            var selected = available.OrderBy(_ => random.Next()).Take(selectedCount);
+
+            foreach (var item in selected)
+            {
+                await _scheduleRepository.AddContentAsync(new ScheduleContent
+                {
+                    ScheduleId = scheduleId,
+                    ContentType = item.Type,
+                    ContentId = item.Id,
+                    EstimatedMinutes = item.EstimatedMinutes,
+                    Completed = false
+                });
+                assignedCount++;
+            }
+        }
+
         await LogActivitySafeAsync(userId, "AutoAssignContent", "StudySchedule", scheduleId,
-            "Contenido auto-asignado");
+            $"{assignedCount} contenidos auto-asignados");
+        return assignedCount;
     }
 
     public async Task<IEnumerable<ScheduleContentResponseDto>> PrioritizeByExamAsync(int userId, int courseId, int scheduleId)

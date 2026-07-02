@@ -36,13 +36,17 @@ public class FlashcardDeckService : IFlashcardDeckService
         if (deck == null)
             throw new KeyNotFoundException($"Deck {id} no encontrado");
 
-        return await MapToDeckDto(deck);
+        var userId = deck.Course?.UserId ?? 0;
+        return await MapToDeckDto(deck, userId);
     }
 
     public async Task<IEnumerable<DeckListResponseDto>> GetByUserIdAsync(int userId)
     {
         var decks = await _deckRepo.GetByUserIdAsync(userId);
-        return decks.Select(MapToListDto);
+        var dtos = new List<DeckListResponseDto>();
+        foreach (var deck in decks)
+            dtos.Add(await MapToListDto(deck, userId));
+        return dtos;
     }
 
     public async Task<IEnumerable<DeckListResponseDto>> GetByCourseIdAsync(int courseId)
@@ -52,15 +56,8 @@ public class FlashcardDeckService : IFlashcardDeckService
 
         foreach (var deck in decks)
         {
-            dtos.Add(new DeckListResponseDto
-            {
-                Id = deck.Id,
-                Name = deck.Name,
-                TotalCards = deck.TotalCards,
-                MasteredPercentage = 0,
-                LastStudiedAt = null,
-                DueCardsCount = 0
-            });
+            var userId = deck.Course?.UserId ?? 0;
+            dtos.Add(await MapToListDto(deck, userId));
         }
 
         return dtos;
@@ -91,7 +88,7 @@ public class FlashcardDeckService : IFlashcardDeckService
             CreatedAt = DateTime.UtcNow
         });
 
-        return await MapToDeckDto(created);
+        return await MapToDeckDto(created, userId);
     }
 
     public async Task<DeckResponseDto> UpdateAsync(int id, UpdateDeckRequestDto request)
@@ -107,7 +104,8 @@ public class FlashcardDeckService : IFlashcardDeckService
         deck.UpdatedAt = DateTime.UtcNow;
 
         var updated = await _deckRepo.UpdateAsync(deck);
-        return await MapToDeckDto(updated);
+        var userId = deck.Course?.UserId ?? 0;
+        return await MapToDeckDto(updated, userId);
     }
 
     public async Task<bool> DeleteAsync(int id)
@@ -156,7 +154,8 @@ public class FlashcardDeckService : IFlashcardDeckService
             await _deckRepo.UpdateAsync(created);
         }
 
-        return await MapToDeckDto(created);
+        var userId = source.Course?.UserId ?? 0;
+        return await MapToDeckDto(created, userId);
     }
 
     public async Task<object> GetStatsAsync(int deckId)
@@ -251,10 +250,22 @@ public class FlashcardDeckService : IFlashcardDeckService
     }
 
     //Mappers
-    private async Task<DeckResponseDto> MapToDeckDto(FlashcardDeck deck)
+    private async Task<DeckResponseDto> MapToDeckDto(FlashcardDeck deck, int userId = 0)
     {
         var cards = await _flashcardRepo.GetByDeckIdAsync(deck.Id);
         var totalCards = cards.Count();
+
+        if (userId == 0)
+            userId = deck.Course?.UserId ?? 0;
+
+        UserProgressFlashcard? progress = null;
+        if (userId > 0)
+            progress = await _progressRepo.GetByUserAndDeckAsync(userId, deck.Id);
+
+        var mastered = progress?.CardsMastered ?? 0;
+        var learning = progress?.CardsInLearning ?? 0;
+        var notStudied = totalCards - mastered - learning;
+        if (notStudied < 0) notStudied = 0;
 
         return new DeckResponseDto
         {
@@ -265,10 +276,10 @@ public class FlashcardDeckService : IFlashcardDeckService
             CourseName = deck.Course?.Name ?? "",
             TotalCards = totalCards,
             SpacedRepetitionEnabled = deck.SpacedRepetitionEnabled,
-            MasteredCards = 0,
-            LearningCards = 0,
-            NotStudiedCards = totalCards,
-            ProgressPercentage = 0,
+            MasteredCards = mastered,
+            LearningCards = learning,
+            NotStudiedCards = notStudied,
+            ProgressPercentage = totalCards > 0 ? Math.Round((decimal)mastered / totalCards * 100, 1) : 0,
             CreatedAt = deck.CreatedAt,
             UpdatedAt = deck.UpdatedAt
         };
@@ -292,18 +303,26 @@ public class FlashcardDeckService : IFlashcardDeckService
             EaseFactor = 2.5m
         };
     }
-    private static DeckListResponseDto MapToListDto(FlashcardDeck deck)
+    private async Task<DeckListResponseDto> MapToListDto(FlashcardDeck deck, int userId)
     {
+        UserProgressFlashcard? progress = null;
+        if (userId > 0)
+            progress = await _progressRepo.GetByUserAndDeckAsync(userId, deck.Id);
+
+        var mastered = progress?.CardsMastered ?? 0;
+        var totalCards = deck.TotalCards;
+        var masteredPercentage = totalCards > 0 ? Math.Round((decimal)mastered / totalCards * 100, 1) : 0;
+
         return new DeckListResponseDto
         {
             Id = deck.Id,
             Name = deck.Name,
-            CourseName = deck.Course?.Name ?? "",       // ✅ NUEVO
-            ColorHex = deck.Course?.ColorHex ?? "#3498db", // ✅ NUEVO
-            TotalCards = deck.TotalCards,
-            MasteredPercentage = 0,
-            LastStudiedAt = null,
-            DueCardsCount = 0
+            CourseName = deck.Course?.Name ?? "",
+            ColorHex = deck.Course?.ColorHex ?? "#3498db",
+            TotalCards = totalCards,
+            MasteredPercentage = masteredPercentage,
+            LastStudiedAt = progress?.LastStudiedAt,
+            DueCardsCount = progress?.CardsInLearning ?? 0
         };
     }
 }

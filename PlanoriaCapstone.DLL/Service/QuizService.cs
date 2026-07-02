@@ -55,6 +55,8 @@ public class QuizService : IQuizService
             ShuffleQuestions = request.ShuffleQuestions,
             ShuffleOptions = request.ShuffleOptions,
             AttemptsAllowed = request.AttemptsAllowed,
+            ShowResults = true,
+            TimePerQuestion = null,
             TotalQuestions = 0,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
@@ -110,6 +112,8 @@ public class QuizService : IQuizService
             ShuffleQuestions = source.ShuffleQuestions,
             ShuffleOptions = source.ShuffleOptions,
             AttemptsAllowed = source.AttemptsAllowed,
+            ShowResults = source.ShowResults,
+            TimePerQuestion = source.TimePerQuestion,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow,
             QuizQuestions = source.QuizQuestions?.Select(q => new QuizQuestion
@@ -361,13 +365,17 @@ public class QuizService : IQuizService
     // SETTINGS
     // ============================================
 
-    public async Task UpdateSettingsAsync(int quizId, object settings)
+    public async Task UpdateSettingsAsync(int quizId, UpdateQuizSettingsRequestDto settings)
     {
         var quiz = await _quizRepository.GetByIdAsync(quizId);
         if (quiz == null)
             throw new KeyNotFoundException($"Quiz con ID {quizId} no encontrado");
 
+        quiz.ShowResults = settings.ShowResults;
+        quiz.AttemptsAllowed = settings.MaxAttempts;
+        quiz.TimePerQuestion = settings.TimePerQuestion > 0 ? settings.TimePerQuestion : null;
         quiz.UpdatedAt = DateTime.UtcNow;
+
         await _quizRepository.UpdateAsync(quiz);
     }
 
@@ -379,11 +387,10 @@ public class QuizService : IQuizService
 
         return new
         {
-            quiz.PassingScore,
-            quiz.TimeLimitMinutes,
-            quiz.ShuffleQuestions,
-            quiz.ShuffleOptions,
-            quiz.AttemptsAllowed
+            mostrarResultados = quiz.ShowResults,
+            permitirReintentos = quiz.AttemptsAllowed > 0,
+            maxIntentos = quiz.AttemptsAllowed,
+            tiempoPorPregunta = quiz.TimePerQuestion ?? 0
         };
     }
 
@@ -398,6 +405,8 @@ public class QuizService : IQuizService
         quiz.ShuffleQuestions = false;
         quiz.ShuffleOptions = false;
         quiz.AttemptsAllowed = 0;
+        quiz.ShowResults = true;
+        quiz.TimePerQuestion = null;
         quiz.UpdatedAt = DateTime.UtcNow;
 
         await _quizRepository.UpdateAsync(quiz);
@@ -435,7 +444,8 @@ public class QuizService : IQuizService
                         {
                             o.Id,
                             o.OptionText,
-                            o.OrderPosition
+                            o.OrderPosition,
+                            o.IsCorrect
                         })
                 })
         };
@@ -553,11 +563,14 @@ public class QuizService : IQuizService
         {
             Id = quiz.Id,
             Title = quiz.Title,
+            Description = quiz.Description,
             TotalQuestions = quiz.TotalQuestions,
             BestScore = null,
             AverageScore = null,
             AttemptsCount = 0,
-            LastAttemptAt = null
+            LastAttemptAt = null,
+            CourseId = quiz.CourseId,
+            CourseName = quiz.Course?.Name ?? string.Empty
         };
     }
 

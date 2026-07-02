@@ -36,11 +36,38 @@ public class UserService : IUserService
         if (user == null)
             throw new InvalidOperationException("Usuario no encontrado");
 
+        var oldName = user.FullName;
+
         if (!string.IsNullOrWhiteSpace(request.FullName))
             user.FullName = request.FullName;
 
         if (!string.IsNullOrWhiteSpace(request.Timezone))
             user.Timezone = request.Timezone;
+
+        // If name changed and user has avatar, move avatar directory
+        if (!string.IsNullOrWhiteSpace(request.FullName) &&
+            !string.Equals(oldName, request.FullName, StringComparison.OrdinalIgnoreCase) &&
+            !string.IsNullOrEmpty(user.Avatar))
+        {
+            var oldSanitized = SanitizeFolderName(oldName);
+            var newSanitized = SanitizeFolderName(request.FullName);
+
+            var oldDir = Path.Combine(_environment.WebRootPath, "usersPhotos", oldSanitized);
+            var newDir = Path.Combine(_environment.WebRootPath, "usersPhotos", newSanitized);
+
+            if (Directory.Exists(oldDir) && !string.Equals(oldSanitized, newSanitized, StringComparison.OrdinalIgnoreCase))
+            {
+                Directory.CreateDirectory(newDir);
+                foreach (var file in Directory.GetFiles(oldDir))
+                {
+                    var destFile = Path.Combine(newDir, Path.GetFileName(file));
+                    File.Move(file, destFile, overwrite: true);
+                }
+                Directory.Delete(oldDir, recursive: false);
+            }
+
+            user.Avatar = Path.Combine("usersPhotos", newSanitized, "avatar.webp");
+        }
 
         user.UpdatedAt = DateTime.UtcNow;
 
@@ -65,19 +92,22 @@ public class UserService : IUserService
         if (user == null)
             throw new InvalidOperationException("Usuario no encontrado");
 
-        var avatarsDir = Path.Combine(_environment.WebRootPath, "avatars");
-        Directory.CreateDirectory(avatarsDir);
+        // Delete old avatar if exists
+        await DeleteAvatarFileAsync(user);
 
-        var ext = Path.GetExtension(fileName);
-        var uniqueFileName = $"{Guid.NewGuid():N}{ext}";
-        var filePath = Path.Combine(avatarsDir, uniqueFileName);
+        var sanitizedUsername = SanitizeFolderName(user.FullName);
+        var userPhotosDir = Path.Combine(_environment.WebRootPath, "usersPhotos", sanitizedUsername);
+        Directory.CreateDirectory(userPhotosDir);
+
+        var avatarFileName = "avatar.webp";
+        var filePath = Path.Combine(userPhotosDir, avatarFileName);
 
         using (var fs = new FileStream(filePath, FileMode.Create))
         {
             await avatarStream.CopyToAsync(fs);
         }
 
-        user.Avatar = Path.Combine("avatars", uniqueFileName);
+        user.Avatar = Path.Combine("usersPhotos", sanitizedUsername, avatarFileName);
         user.UpdatedAt = DateTime.UtcNow;
         await _userRepository.UpdateAsync(user);
 
@@ -98,14 +128,7 @@ public class UserService : IUserService
         if (user == null)
             throw new InvalidOperationException("Usuario no encontrado");
 
-        if (!string.IsNullOrEmpty(user.Avatar))
-        {
-            var fullPath = Path.Combine(_environment.WebRootPath, user.Avatar);
-            if (File.Exists(fullPath))
-            {
-                File.Delete(fullPath);
-            }
-        }
+        await DeleteAvatarFileAsync(user);
 
         user.Avatar = null;
         user.UpdatedAt = DateTime.UtcNow;
@@ -120,6 +143,33 @@ public class UserService : IUserService
             Details = "Avatar eliminado",
             CreatedAt = DateTime.UtcNow
         });
+    }
+
+    private async Task DeleteAvatarFileAsync(User user)
+    {
+        if (!string.IsNullOrEmpty(user.Avatar))
+        {
+            var fullPath = Path.Combine(_environment.WebRootPath, user.Avatar);
+            if (File.Exists(fullPath))
+            {
+                File.Delete(fullPath);
+            }
+            // Also try to remove the empty directory
+            var dir = Path.GetDirectoryName(fullPath);
+            if (dir != null && Directory.Exists(dir) && !Directory.EnumerateFileSystemEntries(dir).Any())
+            {
+                Directory.Delete(dir);
+            }
+        }
+        await Task.CompletedTask;
+    }
+
+    private static string SanitizeFolderName(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+            return "user";
+        var sanitized = new string(name.Where(c => char.IsLetterOrDigit(c) || c == '_' || c == '-').ToArray());
+        return string.IsNullOrWhiteSpace(sanitized) ? "user" : sanitized;
     }
 
     public async Task<UserPreferencesResponseDto> GetPreferencesAsync(int userId)

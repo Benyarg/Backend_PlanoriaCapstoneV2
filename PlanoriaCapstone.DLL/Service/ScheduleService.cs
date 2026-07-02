@@ -281,7 +281,7 @@ public class ScheduleService : IScheduleService
     }
 
     // ============================================
-    // VALIDACIÓN
+    // VALIDACIï¿½N
     // ============================================
 
     private async Task<bool> ValidateContentBelongsToCourse(ScheduleContentRequestDto content, List<int> courseIds)
@@ -319,6 +319,35 @@ public class ScheduleService : IScheduleService
             .Where(c => courseIds.Contains(c.Id))
             .ToDictionaryAsync(c => c.Id);
 
+        var allContents = scheduleList
+            .SelectMany(s => s.ScheduleContents ?? new List<ScheduleContent>())
+            .ToList();
+
+        var quizIds = allContents.Where(c => c.ContentType == "quiz").Select(c => c.ContentId).Distinct().ToList();
+        var deckIds = allContents.Where(c => c.ContentType == "flashcard").Select(c => c.ContentId).Distinct().ToList();
+
+        var completedQuizIds = new HashSet<int>();
+        if (quizIds.Count > 0)
+        {
+            var attempted = await _context.QuizAttempts
+                .Where(a => quizIds.Contains(a.QuizId) && a.CompletedAt != null)
+                .Select(a => a.QuizId)
+                .Distinct()
+                .ToListAsync();
+            completedQuizIds = attempted.ToHashSet();
+        }
+
+        var studiedDeckIds = new HashSet<int>();
+        if (deckIds.Count > 0)
+        {
+            var studied = await _context.FlashcardStudySessions
+                .Where(s => deckIds.Contains(s.DeckId) && s.EndedAt != null)
+                .Select(s => s.DeckId)
+                .Distinct()
+                .ToListAsync();
+            studiedDeckIds = studied.ToHashSet();
+        }
+
         return scheduleList.Select(s =>
         {
             var mapping = courseMappings.FirstOrDefault(m => m.ScheduleId == s.Id);
@@ -329,6 +358,18 @@ public class ScheduleService : IScheduleService
                 name = course.Name;
                 color = course.ColorHex;
             }
+
+            var contents = s.ScheduleContents?.ToList() ?? new List<ScheduleContent>();
+            var totalContent = contents.Count;
+            var completedContent = contents.Count(c =>
+                c.Completed ||
+                (c.ContentType == "quiz" && completedQuizIds.Contains(c.ContentId)) ||
+                (c.ContentType == "flashcard" && studiedDeckIds.Contains(c.ContentId))
+            );
+
+            var progress = s.IsCompleted ? 100 :
+                totalContent > 0 ? Math.Round((decimal)completedContent / totalContent * 100, 1) : 0;
+
             return new ScheduleListResponseDto
             {
                 Id = s.Id,
@@ -336,7 +377,7 @@ public class ScheduleService : IScheduleService
                 StartDateTime = s.StartDatetime,
                 EndDateTime = s.EndDatetime,
                 IsCompleted = s.IsCompleted,
-                ProgressPercentage = s.IsCompleted ? 100 : 0,
+                ProgressPercentage = progress,
                 CourseName = name,
                 ColorHex = color
             };

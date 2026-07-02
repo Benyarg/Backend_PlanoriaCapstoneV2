@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using PlanoriaCapstone.Bll.Interface;
 using PlanoriaCapstone.Dal;
 using PlanoriaCapstone.DTOs.Dashboard.Responses;
@@ -8,6 +9,7 @@ namespace PlanoriaCapstone.Bll.Service;
 
 public class DashboardService : IDashboardService
 {
+    private readonly AppDbContext _context;
     private readonly IActivityLogRepository _activityLogRepository;
     private readonly IStudyScheduleRepository _scheduleRepository;
     private readonly IUserProgressFlashcardRepository _flashcardProgressRepository;
@@ -16,6 +18,7 @@ public class DashboardService : IDashboardService
     private readonly INotificationRepository _notificationRepository;
 
     public DashboardService(
+        AppDbContext context,
         IActivityLogRepository activityLogRepository,
         IStudyScheduleRepository scheduleRepository,
         IUserProgressFlashcardRepository flashcardProgressRepository,
@@ -23,6 +26,7 @@ public class DashboardService : IDashboardService
         ICourseRepository courseRepository,
         INotificationRepository notificationRepository)
     {
+        _context = context;
         _activityLogRepository = activityLogRepository;
         _scheduleRepository = scheduleRepository;
         _flashcardProgressRepository = flashcardProgressRepository;
@@ -48,16 +52,33 @@ public class DashboardService : IDashboardService
         var courses = await _courseRepository.GetByUserIdAsync(userId);
         var unreadCount = await _notificationRepository.GetUnreadCountAsync(userId);
 
+        var todaySessions = await _context.FlashcardStudySessions
+            .Where(s => s.UserId == userId && s.EndedAt != null && s.EndedAt >= todayStart)
+            .ToListAsync();
+        var weekSessions = await _context.FlashcardStudySessions
+            .Where(s => s.UserId == userId && s.EndedAt != null && s.EndedAt >= weekStart)
+            .ToListAsync();
+        var monthSessions = await _context.FlashcardStudySessions
+            .Where(s => s.UserId == userId && s.EndedAt != null && s.EndedAt >= monthStart)
+            .ToListAsync();
+
+        var todayMinutes = (int)todaySessions.Sum(s => (s.EndedAt!.Value - s.StartedAt).TotalMinutes);
+        var weekMinutes = (int)weekSessions.Sum(s => (s.EndedAt!.Value - s.StartedAt).TotalMinutes);
+        var monthMinutes = (int)monthSessions.Sum(s => (s.EndedAt!.Value - s.StartedAt).TotalMinutes);
+
+        var dueFlashcards = flashcardProgress.Sum(p => p.CardsInLearning);
+        var pendingQuizzes = quizProgress.Count(qp => qp.TotalAttempts == 0);
+
         return new DashboardOverviewResponseDto
         {
-            TotalStudyTimeToday = todayActivities.Count * 30,
-            TotalStudyTimeWeek = weekActivities.Count * 30,
-            TotalStudyTimeMonth = monthActivities.Count * 30,
+            TotalStudyTimeToday = todayMinutes,
+            TotalStudyTimeWeek = weekMinutes,
+            TotalStudyTimeMonth = monthMinutes,
             CardsReviewedToday = flashcardProgress.Sum(p => p.TotalReviews),
             QuizzesCompletedToday = quizProgress.Sum(p => p.TotalAttempts),
             StreakDays = CalculateStreak(todayLogs),
             UpcomingExamsCount = courses.Count(c => c.ExamDate.HasValue && c.ExamDate > now),
-            PendingReviewsCount = unreadCount
+            PendingReviewsCount = dueFlashcards + pendingQuizzes
         };
     }
 
@@ -102,18 +123,24 @@ public class DashboardService : IDashboardService
 
     public async Task<MetricCardResponseDto> GetStudyTimeAsync(int userId, string period)
     {
-        var logs = await _activityLogRepository.GetByUserAsync(userId, 200);
         var now = DateTime.UtcNow;
 
-        var filtered = period?.ToLower() switch
+        var query = _context.FlashcardStudySessions
+            .Where(s => s.UserId == userId && s.EndedAt != null);
+
+        var startDate = period?.ToLower() switch
         {
-            "today" => logs.Where(l => l.CreatedAt >= now.Date),
-            "week" => logs.Where(l => l.CreatedAt >= now.AddDays(-7)),
-            "month" => logs.Where(l => l.CreatedAt >= now.AddMonths(-1)),
-            _ => logs
+            "today" => now.Date,
+            "week" => now.AddDays(-7),
+            "month" => now.AddMonths(-1),
+            _ => DateTime.MinValue
         };
 
-        var totalMinutes = filtered.Sum(l => 30);
+        if (startDate > DateTime.MinValue)
+            query = query.Where(s => s.EndedAt >= startDate);
+
+        var sessions = await query.ToListAsync();
+        var totalMinutes = (int)sessions.Sum(s => (s.EndedAt!.Value - s.StartedAt).TotalMinutes);
 
         return new MetricCardResponseDto
         {

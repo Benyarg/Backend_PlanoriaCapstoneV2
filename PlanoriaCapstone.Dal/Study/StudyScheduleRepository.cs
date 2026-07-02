@@ -75,6 +75,15 @@ public class StudyScheduleRepository : IStudyScheduleRepository
         return content;
     }
 
+    public async Task<bool> RemoveContentAsync(int contentId)
+    {
+        var content = await _context.ScheduleContents.FindAsync(contentId);
+        if (content == null) return false;
+        _context.ScheduleContents.Remove(content);
+        await _context.SaveChangesAsync();
+        return true;
+    }
+
     public async Task<ScheduleInterval?> GetIntervalByIdAsync(int id)
     {
         return await _context.ScheduleIntervals.FindAsync(id);

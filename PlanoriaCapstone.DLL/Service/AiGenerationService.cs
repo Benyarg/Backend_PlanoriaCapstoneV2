@@ -126,7 +126,7 @@ public class AiGenerationService : IAiGenerationService
 
         await ProcessQuizGenerationAsync(content.Id, request.TargetCourseId,
             request.NumberOfItems, request.Difficulty ?? "medium",
-            request.Language ?? "es", userId);
+            request.Language ?? "es", request.Topic ?? file.OriginalFilename, userId);
 
         var updatedContent = await FindGeneratedContentByIdAsync(content.Id);
 
@@ -411,7 +411,7 @@ public class AiGenerationService : IAiGenerationService
     }
 
     private async Task ProcessQuizGenerationAsync(int generatedContentId, int courseId,
-        int numberOfItems, string difficulty, string language, int userId)
+        int numberOfItems, string difficulty, string language, string topic, int userId)
     {
         var generated = await FindGeneratedContentByIdAsync(generatedContentId);
         if (generated == null) return;
@@ -420,7 +420,7 @@ public class AiGenerationService : IAiGenerationService
         if (file == null) return;
 
         string fileContent = await ExtractTextFromFileAsync(file);
-        string prompt = BuildQuizPrompt(fileContent, numberOfItems, difficulty, language);
+        string prompt = BuildQuizPrompt(fileContent, numberOfItems, difficulty, language, topic);
         string aiResponse = await CallAIApiAsync(prompt);
         var quizQuestions = ParseQuizFromAIResponse(aiResponse);
 
@@ -429,7 +429,7 @@ public class AiGenerationService : IAiGenerationService
 
         var quizRequest = new CreateQuizRequestDto
         {
-            Title = $"Quiz - {file.OriginalFilename}",
+            Title = topic.Length <= 100 ? topic : topic[..100],
             Description = $"Quiz generado por IA desde {file.OriginalFilename}",
             CourseId = courseId,
             PassingScore = 70.00m,
@@ -524,47 +524,72 @@ public class AiGenerationService : IAiGenerationService
 
     private string BuildFlashcardPrompt(string content, int numberOfItems, string difficulty, string language)
     {
-        return $@"Eres un profesor experto. Crea {numberOfItems} flashcards educativas basadas EXCLUSIVAMENTE en el siguiente contenido.
+        var langName = language switch
+        {
+            "en" => "English",
+            "pt" => "Portuguese",
+            _ => "Spanish"
+        };
 
-CONTENIDO:
+        var exampleQuestion = language == "en" ? "question" : language == "pt" ? "pergunta" : "pregunta";
+        var exampleAnswer = language == "en" ? "answer" : language == "pt" ? "resposta" : "respuesta";
+        var exampleHint = language == "en" ? "hint" : language == "pt" ? "dica" : "pista";
+
+        return $@"You are an expert teacher. Create {numberOfItems} educational flashcards based EXCLUSIVELY on the following content. Respond ONLY in {langName}.
+
+CONTENT:
 {content}
 
-REQUISITOS:
-- Dificultad: {difficulty} | Idioma: {language}
-- Exactamente {numberOfItems} flashcards
-- Preguntas claras y respuestas concisas basadas en el contenido
-- Incluye pistas y etiquetas
+REQUIREMENTS:
+- Difficulty: {difficulty}
+- Language: {language} (respond in {langName})
+- Exactly {numberOfItems} flashcards
+- Clear questions and concise answers based on the content
+- Include hints and tags
+- All text (questions, answers, hints, tags) MUST be in {langName}
 
-IMPORTANTE: Devuelve SOLO un array JSON válido, sin texto adicional:
+IMPORTANT: Return ONLY a valid JSON array, no additional text:
 [
   {{
-    ""question"": ""pregunta"",
-    ""answer"": ""respuesta"",
-    ""hint"": ""pista"",
+    ""question"": ""{exampleQuestion} 1"",
+    ""answer"": ""{exampleAnswer}"",
+    ""hint"": ""{exampleHint}"",
     ""difficulty"": ""{difficulty}"",
-    ""tags"": [""tema1"", ""tema2""]
+    ""tags"": [""tag1"", ""tag2""]
   }}
 ]";
     }
 
-    private string BuildQuizPrompt(string content, int numberOfItems, string difficulty, string language)
+    private string BuildQuizPrompt(string content, int numberOfItems, string difficulty, string language, string topic)
     {
-        return $@"Eres un profesor experto. Crea {numberOfItems} preguntas de opción múltiple basadas EXCLUSIVAMENTE en el siguiente contenido.
+        var langName = language switch
+        {
+            "en" => "English",
+            "pt" => "Portuguese",
+            _ => "Spanish"
+        };
 
-CONTENIDO:
+        var exampleQuestion = language == "en" ? "question" : language == "pt" ? "pergunta" : "pregunta";
+        var exampleExplanation = language == "en" ? "explanation" : language == "pt" ? "explicação" : "explicación";
+
+        return $@"You are an expert teacher. Create {numberOfItems} multiple-choice questions about ""{topic}"" based EXCLUSIVELY on the following content. Respond ONLY in {langName}.
+
+CONTENT:
 {content}
 
-REQUISITOS:
-- Dificultad: {difficulty} | Idioma: {language}
-- 4 opciones por pregunta, solo una correcta
-- Incluye explicación de la respuesta correcta
+REQUIREMENTS:
+- Difficulty: {difficulty}
+- Language: {language} (respond in {langName})
+- 4 options per question, only one correct
+- Include explanation for the correct answer
+- All text (questions, options, explanations) MUST be in {langName}
 
-IMPORTANTE: Devuelve SOLO un array JSON válido, sin texto adicional:
+IMPORTANT: Return ONLY a valid JSON array, no additional text:
 [
   {{
-    ""questionText"": ""pregunta"",
+    ""questionText"": ""{exampleQuestion} 1"",
     ""questionType"": ""multiple_choice"",
-    ""explanation"": ""explicación"",
+    ""explanation"": ""{exampleExplanation}"",
     ""options"": [
       {{ ""optionText"": ""A"", ""isCorrect"": false }},
       {{ ""optionText"": ""B"", ""isCorrect"": true }},

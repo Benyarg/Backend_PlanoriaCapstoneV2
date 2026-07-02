@@ -183,6 +183,7 @@ app.UseExceptionHandler(appBuilder =>
             UnauthorizedAccessException => 401,
             KeyNotFoundException => 404,
             ArgumentException => 400,
+            InvalidOperationException => 400,
             _ => 500
         };
 

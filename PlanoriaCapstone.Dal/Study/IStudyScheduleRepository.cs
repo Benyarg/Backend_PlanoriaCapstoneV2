@@ -12,6 +12,7 @@ public interface IStudyScheduleRepository
     Task<bool> DeleteAsync(int id);
     Task<ScheduleInterval> AddIntervalAsync(ScheduleInterval interval);
     Task<ScheduleContent> AddContentAsync(ScheduleContent content);
+    Task<bool> RemoveContentAsync(int contentId);
     Task<ScheduleInterval?> GetIntervalByIdAsync(int id);
     Task UpdateIntervalAsync(ScheduleInterval interval);
     Task<bool> DeleteIntervalAsync(int id);

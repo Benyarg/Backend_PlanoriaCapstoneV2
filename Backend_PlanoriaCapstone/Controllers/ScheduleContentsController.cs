@@ -73,8 +73,8 @@ namespace Backend_PlanoriaCapstone.Controllers
         {
             var userId = User.ObtenerUserId();
             if (userId == null) return Unauthorized();
-            await _scheduleContentService.AutoAssignAsync(userId.Value, scheduleId);
-            return Ok(new { message = "Content auto-assigned" });
+            var count = await _scheduleContentService.AutoAssignAsync(userId.Value, scheduleId);
+            return Ok(new { assignedCount = count, message = $"{count} contenido(s) asignado(s)" });
         }
 
         [HttpPost("prioritize-exam")]

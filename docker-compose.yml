@@ -16,6 +16,7 @@ services:
   backend:
     build: .
     container_name: planoria-backend
+    restart: unless-stopped
     ports:
       - "7075:8080"
     depends_on:

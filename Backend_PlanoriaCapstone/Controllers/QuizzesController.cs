@@ -152,7 +152,7 @@ namespace Backend_PlanoriaCapstone.Controllers
         }
 
         [HttpPut("{id}/settings")]
-        public async Task<IActionResult> UpdateSettings(int id, [FromBody] object settings)
+        public async Task<IActionResult> UpdateSettings(int id, [FromBody] UpdateQuizSettingsRequestDto settings)
         {
             await _quizService.UpdateSettingsAsync(id, settings);
             return NoContent();

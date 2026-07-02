@@ -20,7 +20,7 @@ public interface IQuizService
     Task<OptionResponseDto> CreateOptionAsync(int questionId, CreateOptionRequestDto request);
     Task<OptionResponseDto> UpdateOptionAsync(int optionId, UpdateOptionRequestDto request);
     Task<bool> DeleteOptionAsync(int optionId);
-    Task UpdateSettingsAsync(int quizId, object settings);
+    Task UpdateSettingsAsync(int quizId, UpdateQuizSettingsRequestDto settings);
     Task<object> GetSettingsAsync(int quizId);
     Task ResetSettingsAsync(int quizId);
     Task<object> PreviewAsync(int quizId);

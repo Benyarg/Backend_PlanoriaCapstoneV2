@@ -13,17 +13,20 @@ public class CourseService : ICourseService
     private readonly IUserCourseExamProgressRepository _progressRepository;
     private readonly IUserRepository _userRepository;
     private readonly IActivityLogRepository _activityLogRepository;
+    private readonly IStudyScheduleRepository _scheduleRepository;
 
     public CourseService(
         ICourseRepository courseRepository,
         IUserCourseExamProgressRepository progressRepository,
         IUserRepository userRepository,
-        IActivityLogRepository activityLogRepository)
+        IActivityLogRepository activityLogRepository,
+        IStudyScheduleRepository scheduleRepository)
     {
         _courseRepository = courseRepository;
         _progressRepository = progressRepository;
         _userRepository = userRepository;
         _activityLogRepository = activityLogRepository;
+        _scheduleRepository = scheduleRepository;
     }
 
     //  GESTION DE CURSOS
@@ -85,6 +88,20 @@ public class CourseService : ICourseService
 
         var created = await _courseRepository.CreateAsync(course);
 
+        if (created.ExamDate.HasValue)
+        {
+            var schedule = new StudySchedule
+            {
+                UserId = userId,
+                Title = $"Examen: {created.Name}",
+                StartDatetime = created.ExamDate.Value,
+                EndDatetime = created.ExamDate.Value.AddHours(2),
+                IsCompleted = false,
+                CreatedAt = DateTime.UtcNow
+            };
+            await _scheduleRepository.CreateAsync(schedule);
+        }
+
         await _activityLogRepository.LogAsync(new ActivityLog
         {
             UserId = userId,
@@ -123,6 +140,33 @@ public class CourseService : ICourseService
         course.UpdatedAt = DateTime.UtcNow;
 
         var updated = await _courseRepository.UpdateAsync(course);
+
+        if (request.ExamDate.HasValue)
+        {
+            var existingSchedules = await _scheduleRepository.GetByUserAsync(course.UserId);
+            var examSchedule = existingSchedules.FirstOrDefault(s =>
+                s.Title == $"Examen: {updated.Name}");
+
+            if (examSchedule != null)
+            {
+                examSchedule.StartDatetime = request.ExamDate.Value;
+                examSchedule.EndDatetime = request.ExamDate.Value.AddHours(2);
+                await _scheduleRepository.UpdateAsync(examSchedule);
+            }
+            else
+            {
+                var schedule = new StudySchedule
+                {
+                    UserId = course.UserId,
+                    Title = $"Examen: {updated.Name}",
+                    StartDatetime = request.ExamDate.Value,
+                    EndDatetime = request.ExamDate.Value.AddHours(2),
+                    IsCompleted = false,
+                    CreatedAt = DateTime.UtcNow
+                };
+                await _scheduleRepository.CreateAsync(schedule);
+            }
+        }
 
         await _activityLogRepository.LogAsync(new ActivityLog
         {
@@ -271,6 +315,30 @@ public class CourseService : ICourseService
 
         course.UpdatedAt = DateTime.UtcNow;
         await _courseRepository.UpdateAsync(course);
+
+        var existingSchedules = await _scheduleRepository.GetByUserAsync(course.UserId);
+        var examSchedule = existingSchedules.FirstOrDefault(s =>
+            s.Title == $"Examen: {course.Name}");
+
+        if (examSchedule != null)
+        {
+            examSchedule.StartDatetime = request.ExamDate;
+            examSchedule.EndDatetime = request.ExamDate.AddHours(2);
+            await _scheduleRepository.UpdateAsync(examSchedule);
+        }
+        else
+        {
+            var schedule = new StudySchedule
+            {
+                UserId = course.UserId,
+                Title = $"Examen: {course.Name}",
+                StartDatetime = request.ExamDate,
+                EndDatetime = request.ExamDate.AddHours(2),
+                IsCompleted = false,
+                CreatedAt = DateTime.UtcNow
+            };
+            await _scheduleRepository.CreateAsync(schedule);
+        }
 
         await _activityLogRepository.LogAsync(new ActivityLog
         {

@@ -9,7 +9,7 @@ public interface IScheduleContentService
     Task<bool> DetachContentAsync(int scheduleId, int contentId);
     Task ReorderContentAsync(int scheduleId, List<int> contentIds);
     Task<IEnumerable<ScheduleContentResponseDto>> GetAssignedContentAsync(int scheduleId);
-    Task AutoAssignAsync(int userId, int scheduleId);
+    Task<int> AutoAssignAsync(int userId, int scheduleId);
     Task<IEnumerable<ScheduleContentResponseDto>> PrioritizeByExamAsync(int userId, int courseId, int scheduleId);
     Task<IEnumerable<ScheduleContentResponseDto>> PrioritizeByWeaknessAsync(int userId, int courseId, int scheduleId);
     Task<object> SuggestSessionAsync(int userId, int courseId);
