@@ -172,7 +172,7 @@ namespace Backend_PlanoriaCapstone.Controllers
                     StartDateTime = detail.StartDateTime,
                     EndDateTime = detail.EndDateTime,
                     IsCompleted = detail.IsCompleted,
-                    ProgressPercentage = detail.IsCompleted ? 100 : 0,
+                    ProgressPercentage = s.IsCompleted ? 100 : s.ProgressPercentage,
                     CourseName = courseName,
                     ColorHex = colorHex
                 });

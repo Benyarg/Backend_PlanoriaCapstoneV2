@@ -324,7 +324,7 @@ public class ScheduleService : IScheduleService
             .ToList();
 
         var quizIds = allContents.Where(c => c.ContentType == "quiz").Select(c => c.ContentId).Distinct().ToList();
-        var deckIds = allContents.Where(c => c.ContentType == "flashcard").Select(c => c.ContentId).Distinct().ToList();
+        var deckIds = allContents.Where(c => c.ContentType == "flashcard_deck").Select(c => c.ContentId).Distinct().ToList();
 
         var completedQuizIds = new HashSet<int>();
         if (quizIds.Count > 0)
@@ -337,15 +337,21 @@ public class ScheduleService : IScheduleService
             completedQuizIds = attempted.ToHashSet();
         }
 
-        var studiedDeckIds = new HashSet<int>();
+        var flashcardProgressByDeck = new Dictionary<int, UserProgressFlashcard>();
+        var deckTotalCardsMap = new Dictionary<int, int>();
         if (deckIds.Count > 0)
         {
-            var studied = await _context.FlashcardStudySessions
-                .Where(s => deckIds.Contains(s.DeckId) && s.EndedAt != null)
-                .Select(s => s.DeckId)
-                .Distinct()
+            var progressRecords = await _context.UserProgressFlashcards
+                .Where(p => deckIds.Contains(p.DeckId))
                 .ToListAsync();
-            studiedDeckIds = studied.ToHashSet();
+            foreach (var p in progressRecords)
+                flashcardProgressByDeck[p.DeckId] = p;
+
+            var decks = await _context.FlashcardDecks
+                .Where(d => deckIds.Contains(d.Id))
+                .ToListAsync();
+            foreach (var d in decks)
+                deckTotalCardsMap[d.Id] = d.TotalCards;
         }
 
         return scheduleList.Select(s =>
@@ -359,16 +365,47 @@ public class ScheduleService : IScheduleService
                 color = course.ColorHex;
             }
 
-            var contents = s.ScheduleContents?.ToList() ?? new List<ScheduleContent>();
+            var contents = s.ScheduleContents?.Where(c => c.ContentType != "Course").ToList() ?? new List<ScheduleContent>();
             var totalContent = contents.Count;
-            var completedContent = contents.Count(c =>
-                c.Completed ||
-                (c.ContentType == "quiz" && completedQuizIds.Contains(c.ContentId)) ||
-                (c.ContentType == "flashcard" && studiedDeckIds.Contains(c.ContentId))
-            );
 
-            var progress = s.IsCompleted ? 100 :
-                totalContent > 0 ? Math.Round((decimal)completedContent / totalContent * 100, 1) : 0;
+            decimal progress;
+            if (s.IsCompleted)
+            {
+                progress = 100;
+            }
+            else if (totalContent == 0)
+            {
+                progress = 0;
+            }
+            else
+            {
+                var weightedSum = 0m;
+                foreach (var c in contents)
+                {
+                    if (c.Completed)
+                    {
+                        weightedSum += 100;
+                    }
+                    else if (c.ContentType == "quiz")
+                    {
+                        weightedSum += completedQuizIds.Contains(c.ContentId) ? 100 : 0;
+                    }
+                    else if (c.ContentType == "flashcard_deck")
+                    {
+                        var fp = flashcardProgressByDeck.GetValueOrDefault(c.ContentId);
+                        var total = deckTotalCardsMap.GetValueOrDefault(c.ContentId);
+                        if (total > 0 && fp != null)
+                            weightedSum += Math.Round((decimal)fp.CardsMastered / total * 100, 1);
+                        else
+                            weightedSum += 0;
+                    }
+                    else
+                    {
+                        weightedSum += 0;
+                    }
+                }
+                progress = Math.Round(weightedSum / totalContent, 1);
+            }
 
             return new ScheduleListResponseDto
             {

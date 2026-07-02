@@ -16,6 +16,8 @@ public class CourseService : ICourseService
     private readonly IStudyScheduleRepository _scheduleRepository;
     private readonly IFlashcardDeckRepository _deckRepository;
     private readonly IQuizRepository _quizRepository;
+    private readonly IUserProgressFlashcardRepository _flashcardProgressRepo;
+    private readonly IUserProgressQuizRepository _quizProgressRepo;
 
     public CourseService(
         ICourseRepository courseRepository,
@@ -24,7 +26,9 @@ public class CourseService : ICourseService
         IActivityLogRepository activityLogRepository,
         IStudyScheduleRepository scheduleRepository,
         IFlashcardDeckRepository deckRepository,
-        IQuizRepository quizRepository)
+        IQuizRepository quizRepository,
+        IUserProgressFlashcardRepository flashcardProgressRepo,
+        IUserProgressQuizRepository quizProgressRepo)
     {
         _courseRepository = courseRepository;
         _progressRepository = progressRepository;
@@ -33,6 +37,8 @@ public class CourseService : ICourseService
         _scheduleRepository = scheduleRepository;
         _deckRepository = deckRepository;
         _quizRepository = quizRepository;
+        _flashcardProgressRepo = flashcardProgressRepo;
+        _quizProgressRepo = quizProgressRepo;
     }
 
     //  GESTION DE CURSOS
@@ -42,15 +48,37 @@ public class CourseService : ICourseService
     public async Task<IEnumerable<CourseListResponseDto>> GetByUserIdAsync(int userId)
     {
         var courses = await _courseRepository.GetByUserIdAsync(userId);
+        var allFlashcardProgress = (await _flashcardProgressRepo.GetByUserAsync(userId)).ToList();
+        var allQuizProgress = (await _quizProgressRepo.GetByUserAsync(userId)).ToList();
         var dtos = new List<CourseListResponseDto>();
 
         foreach (var course in courses)
         {
             var progress = await _progressRepository.GetByUserAndCourseAsync(userId, course.Id);
-            dtos.Add(MapToListDto(course, progress));
+            var realProgress = await CalculateRealProgressAsync(userId, course.Id, allFlashcardProgress, allQuizProgress);
+            dtos.Add(MapToListDto(course, progress, realProgress));
         }
 
         return dtos.OrderByDescending(c => c.ExamDate ?? DateTime.MaxValue);
+    }
+
+    private async Task<decimal> CalculateRealProgressAsync(int userId, int courseId,
+        List<UserProgressFlashcard> allFlashcardProgress, List<UserProgressQuiz> allQuizProgress)
+    {
+        var decks = (await _deckRepository.GetByCourseIdAsync(courseId)).ToList();
+        var deckIds = decks.Select(d => d.Id).ToHashSet();
+        var totalCards = decks.Sum(d => d.TotalCards);
+        var masteredCards = allFlashcardProgress.Where(p => deckIds.Contains(p.DeckId)).Sum(p => p.CardsMastered);
+
+        var quizzes = (await _quizRepository.GetByCourseIdAsync(courseId)).ToList();
+        var quizIds = quizzes.Select(q => q.Id).ToHashSet();
+        var totalQuizzes = quizzes.Count;
+        var completedQuizzes = allQuizProgress.Where(p => quizIds.Contains(p.QuizId)).Sum(p => p.TotalAttempts);
+
+        var totalItems = totalCards + totalQuizzes;
+        if (totalItems == 0) return 0;
+
+        return Math.Round((decimal)(masteredCards + completedQuizzes) / totalItems * 100, 1);
     }
 
     // Busca el curso y cuánto ha avanzado el usuario en ese curso.
@@ -66,7 +94,11 @@ public class CourseService : ICourseService
         var totalQuizzes = (await _quizRepository.GetByCourseIdAsync(id, course.UserId))
             .Count();
 
-        return MapToResponseDto(course, progress, totalFlashcards, totalQuizzes);
+        var allFlashcardProgress = (await _flashcardProgressRepo.GetByUserAsync(course.UserId)).ToList();
+        var allQuizProgress = (await _quizProgressRepo.GetByUserAsync(course.UserId)).ToList();
+        var realProgress = await CalculateRealProgressAsync(course.UserId, id, allFlashcardProgress, allQuizProgress);
+
+        return MapToResponseDto(course, progress, totalFlashcards, totalQuizzes, realProgress);
     }
 
     public async Task<CourseResponseDto> CreateAsync(int userId, CreateCourseRequestDto request)
@@ -286,11 +318,14 @@ public class CourseService : ICourseService
             _ => courses.OrderByDescending(c => c.CreatedAt)
         };
 
+        var allFlashcardProgress = (await _flashcardProgressRepo.GetByUserAsync(userId)).ToList();
+        var allQuizProgress = (await _quizProgressRepo.GetByUserAsync(userId)).ToList();
         var dtos = new List<CourseListResponseDto>();
         foreach (var course in courses)
         {
             var progress = await _progressRepository.GetByUserAndCourseAsync(userId, course.Id);
-            dtos.Add(MapToListDto(course, progress));
+            var realProgress = await CalculateRealProgressAsync(userId, course.Id, allFlashcardProgress, allQuizProgress);
+            dtos.Add(MapToListDto(course, progress, realProgress));
         }
 
         return dtos;
@@ -520,7 +555,7 @@ public class CourseService : ICourseService
 
 
     //UTILIDADES
-    private CourseResponseDto MapToResponseDto(Course course, UserCourseExamProgress? progress, int totalFlashcards = 0, int totalQuizzes = 0)
+    private CourseResponseDto MapToResponseDto(Course course, UserCourseExamProgress? progress, int totalFlashcards = 0, int totalQuizzes = 0, decimal realProgress = 0)
     {
         return new CourseResponseDto
         {
@@ -533,13 +568,13 @@ public class CourseService : ICourseService
             IsArchived = course.IsArchived,
             TotalFlashcards = totalFlashcards,
             TotalQuizzes = totalQuizzes,
-            ProgressPercentage = progress?.ExamReadinessScore ?? 0,
+            ProgressPercentage = realProgress > 0 ? realProgress : (progress?.ExamReadinessScore ?? 0),
             CreatedAt = course.CreatedAt,
             UpdatedAt = course.UpdatedAt
         };
     }
 
-    private CourseListResponseDto MapToListDto(Course course, UserCourseExamProgress? progress)
+    private CourseListResponseDto MapToListDto(Course course, UserCourseExamProgress? progress, decimal realProgress)
     {
         return new CourseListResponseDto
         {
@@ -547,7 +582,7 @@ public class CourseService : ICourseService
             Name = course.Name,
             ColorHex = course.ColorHex,
             ExamDate = course.ExamDate,
-            ProgressPercentage = progress?.ExamReadinessScore ?? 0,
+            ProgressPercentage = realProgress > 0 ? realProgress : (progress?.ExamReadinessScore ?? 0),
             IsArchived = course.IsArchived,
             LastStudiedAt = progress?.LastCalculatedAt
         };
